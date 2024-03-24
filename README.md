@@ -191,10 +191,10 @@ if __name__ == "__main__":
 
 When applying colors in nx.draw visualization, you can map them based on node attributes or metrics. For instance, if you have a metric that quantifies the centrality or importance of a node in the spread of asthma or COPD, you could map this metric to your color scale so that the most important nodes are highlighted with your primary colors.
 
-A code example using NetworkX to apply epilung palette:
 
-python
-Copy code
+Here’s a code example using NetworkX to apply Epilung palette to a network:
+
+```python
 def visualize_network(G, node_attribute):
     plt.figure(figsize=(12, 8))
     color_map = []
@@ -215,7 +215,10 @@ def visualize_network(G, node_attribute):
     plt.title('Network Visualization')
     plt.show()
 
+# ... rest of your code to call visualize_network
+```
 
+Remember that effective visual communication in data visualization is not just about aesthetics but also about maki
 This script provides a foundational workflow for network-based analysis, including a straightforward visualization step that can be further refined or expanded based on your project's specific requirements.
 
 ## Contributing
