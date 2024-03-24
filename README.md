@@ -2,7 +2,7 @@
 # Epilung EpiNet Analysis Project
 
 ## Overview
-EpiNet Analysis is an AI-driven framework designed to analyze epidemiological data through network theory and machine learning. It aims to identify patterns, predict outcomes, and provide actionable insights based on large-scale health data sets. The project combines epidemiological modeling with advanced data analysis techniques to offer a comprehensive tool for researchers and public health officials.
+Epilung EpiNet Analysis is an AI-driven framework designed to analyze epidemiological data through network theory and machine learning. It aims to identify patterns, predict outcomes, and provide actionable insights based on large-scale health data sets. The project combines epidemiological modeling with advanced data analysis techniques to offer a comprehensive tool for researchers and public health officials.
 
 ## Installation
 
@@ -33,9 +33,90 @@ cd epinet-analysis
 pip install -r requirements.txt
 ```
 
+
+Here's code:
+
+```python
+import networkx as nx
+import numpy as np
+import pandas as pd
+from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score, precision_recall_fscore_support, confusion_matrix
+import matplotlib.pyplot as plt
+
+# Data Processing Module
+def load_data(nodes_file, edges_file):
+    # Load nodes and edges from CSV files
+    nodes = pd.read_csv(nodes_file)
+    edges = pd.read_csv(edges_file)
+    return nodes, edges
+
+def construct_network(nodes, edges):
+    G = nx.Graph()
+    # Add nodes and edges with attributes
+    for index, row in nodes.iterrows():
+        G.add_node(row['ID'], **row.to_dict())
+    for index, row in edges.iterrows():
+        G.add_edge(row['SourceID'], row['TargetID'], **row.to_dict())
+    return G
+
+# Feature Engineering Module
+selected_features = []  # Placeholder for predefined selected features
+def generate_features(G):
+    features = {}
+    for node in G.nodes():
+        node_data = G.nodes[node]
+        feature_vector = [node_data.get(feature, 0) for feature in selected_features]  # if selected_features else []
+        # Add network-based features
+        feature_vector.extend([
+            G.degree(node),
+            nx.centrality.betweenness_centrality(G, normalized=True).get(node, 0),
+            # Add other centrality measures as needed
+        ])
+        features[node] = feature_vector
+    return features
+
+# Machine Learning Module
+def train_model(X, y, params):
+    model = RandomForestClassifier(random_state=42)
+    clf = GridSearchCV(model, params, cv=5)
+    clf.fit(X, y)
+    best_model = clf.best_estimator_
+    return best_model, clf.best_params_
+
+def evaluate_model(model, X_test, y_test):
+    y_pred = model.predict(X_test)
+    accuracy = accuracy_score(y_test, y_pred)
+    precision, recall, f1, _ = precision_recall_fscore_support(y_test, y_pred, average='binary')
+    print(f"Accuracy: {accuracy}\nPrecision: {precision}\nRecall: {recall}\nF1 Score: {f1}")
+    print("Confusion Matrix:", confusion_matrix(y_test, y_pred))
+
+# Main Workflow
+def main():
+    nodes, edges = load_data('nodes.csv', 'edges.csv')
+    G = construct_network(nodes, edges)
+    features = generate_features(G)
+    
+    X = pd.DataFrame.from_dict(features, orient='index')
+    y = nodes.set_index('ID')['Outcome']  # Assuming 'Outcome' is a column in nodes.csv indicating the target variable
+    
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    
+    params = {'n_estimators': [100, 200, 300]}
+    model, best_params = train_model(X_train, y_train, params)
+    
+    print("Best Parameters:", best_params)
+    evaluate_model(model, X_test, y_test)
+
+if __name__ == "__main__":
+    main()
+```
+
+    
 ## Usage
 
-To use the EpiNet Analysis framework, follow these steps:
+To use the Epilung EpiNet Analysis framework, follow these steps:
 
 1. Prepare your epidemiological data according to the guidelines provided in the `data_format.md` file.
 2. Adjust the epinet-analysis to your project and create main.py. Run the main script with Python:
@@ -46,17 +127,6 @@ python main.py
 
 For more detailed usage instructions, refer to the `docs` directory.
 
-## Contributing
-
-We welcome contributions from the community! If you're interested in contributing, please follow these steps:
-
-1. Fork the repository.
-2. Create a new branch for your feature or bug fix.
-3. Commit your changes with clear, descriptive messages.
-4. Push the branch to your fork.
-5. Submit a pull request to the main repository.
-
-For more details, see the `CONTRIBUTING.md` file.
 
 ### Notes:
 - **Feature Selection**: The placeholder for `selected_features` needs to be populated with actual feature names expected to be part of the nodes' attributes. These should match the column names in your nodes CSV file.
@@ -145,10 +215,20 @@ def visualize_network(G, node_attribute):
     plt.title('Network Visualization')
     plt.show()
 
-## ... rest of your code to call visualize_network
 
 This script provides a foundational workflow for network-based analysis, including a straightforward visualization step that can be further refined or expanded based on your project's specific requirements.
 
+## Contributing
+
+We welcome contributions from the community! If you're interested in contributing, please follow these steps:
+
+1. Fork the repository.
+2. Create a new branch for your feature or bug fix.
+3. Commit your changes with clear, descriptive messages.
+4. Push the branch to your fork.
+5. Submit a pull request to the main repository.
+
+For more details, see the `CONTRIBUTING.md` file.
 
 ## License
 
