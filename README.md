@@ -1,8 +1,8 @@
 
-# EpiNet Analysis Project
+# Epilung EpiNet Analysis Project
 
 ## Overview
-EpiNet Analysis is an innovative AI-driven framework designed to analyze epidemiological data through network theory and machine learning. It aims to identify patterns, predict outcomes, and provide actionable insights based on large-scale health data sets. The project combines epidemiological modeling with advanced data analysis techniques to offer a comprehensive tool for researchers and public health officials.
+EpiNet Analysis is an AI-driven framework designed to analyze epidemiological data through network theory and machine learning. It aims to identify patterns, predict outcomes, and provide actionable insights based on large-scale health data sets. The project combines epidemiological modeling with advanced data analysis techniques to offer a comprehensive tool for researchers and public health officials.
 
 ## Installation
 
@@ -121,7 +121,7 @@ if __name__ == "__main__":
 
 When applying colors in nx.draw visualization, you can map them based on node attributes or metrics. For instance, if you have a metric that quantifies the centrality or importance of a node in the spread of asthma or COPD, you could map this metric to your color scale so that the most important nodes are highlighted with your primary colors.
 
-Here’s a code example using NetworkX to apply epilung palette:
+A code example using NetworkX to apply epilung palette:
 
 python
 Copy code
