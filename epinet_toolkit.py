@@ -1,0 +1,514 @@
+"""General network analysis toolkit for node/edge CSV data.
+
+This script keeps two analytic lenses side by side:
+
+1. graph-derived node features, optionally used for a simple outcome model
+2. shortest-path summaries from source nodes to target/outcome nodes
+
+It is intentionally domain-neutral. Epidemiology is one use case, not a hard-coded
+assumption.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import math
+from pathlib import Path
+from typing import Iterable
+
+import networkx as nx
+import numpy as np
+import pandas as pd
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score, confusion_matrix, precision_recall_fscore_support
+from sklearn.model_selection import GridSearchCV, train_test_split
+
+
+def split_csv_list(value: str | None) -> list[str]:
+    if not value:
+        return []
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def load_tables(nodes_file: str, edges_file: str) -> tuple[pd.DataFrame, pd.DataFrame]:
+    return pd.read_csv(nodes_file), pd.read_csv(edges_file)
+
+
+def validate_tables(
+    nodes: pd.DataFrame,
+    edges: pd.DataFrame,
+    *,
+    id_column: str,
+    source_column: str,
+    target_column: str,
+    outcome_column: str | None = None,
+) -> dict[str, int | list[str]]:
+    required_nodes = {id_column}
+    if outcome_column:
+        required_nodes.add(outcome_column)
+    required_edges = {source_column, target_column}
+
+    missing_node_cols = sorted(required_nodes - set(nodes.columns))
+    missing_edge_cols = sorted(required_edges - set(edges.columns))
+    if missing_node_cols or missing_edge_cols:
+        raise ValueError(
+            f"Missing columns: nodes={missing_node_cols or 'ok'}, "
+            f"edges={missing_edge_cols or 'ok'}"
+        )
+
+    node_ids = set(nodes[id_column].astype(str))
+    edge_endpoints = set(edges[source_column].astype(str)) | set(edges[target_column].astype(str))
+    missing_endpoints = sorted(edge_endpoints - node_ids)
+    duplicate_node_ids = int(nodes[id_column].astype(str).duplicated().sum())
+    duplicate_edges = int(edges[[source_column, target_column]].astype(str).duplicated().sum())
+
+    if duplicate_node_ids:
+        raise ValueError(f"Node IDs must be unique; found {duplicate_node_ids} duplicates")
+    if missing_endpoints:
+        raise ValueError(f"Edges reference unknown node IDs: {missing_endpoints[:10]}")
+
+    return {
+        "node_count": len(nodes),
+        "edge_rows": len(edges),
+        "duplicate_edge_rows": duplicate_edges,
+        "missing_endpoints": missing_endpoints,
+    }
+
+
+def build_graph(
+    nodes: pd.DataFrame,
+    edges: pd.DataFrame,
+    *,
+    id_column: str = "ID",
+    source_column: str = "SourceID",
+    target_column: str = "TargetID",
+    directed: bool = False,
+    weight_column: str | None = None,
+) -> nx.Graph:
+    graph: nx.Graph = nx.DiGraph() if directed else nx.Graph()
+
+    for _, row in nodes.iterrows():
+        attrs = row.to_dict()
+        node_id = str(attrs.pop(id_column))
+        graph.add_node(node_id, **attrs)
+
+    for _, row in edges.iterrows():
+        attrs = row.to_dict()
+        source = str(attrs.pop(source_column))
+        target = str(attrs.pop(target_column))
+        if weight_column and weight_column in attrs:
+            attrs["weight"] = float(attrs[weight_column])
+        graph.add_edge(source, target, **attrs)
+
+    return graph
+
+
+def graph_summary(graph: nx.Graph) -> dict[str, int | float | bool]:
+    undirected = graph.to_undirected()
+    degrees = dict(graph.degree())
+    return {
+        "directed": graph.is_directed(),
+        "nodes": graph.number_of_nodes(),
+        "edges": graph.number_of_edges(),
+        "components": nx.number_connected_components(undirected),
+        "isolates": nx.number_of_isolates(graph),
+        "density": nx.density(graph),
+        "mean_degree": float(np.mean(list(degrees.values()))) if degrees else 0.0,
+        "max_degree": max(degrees.values()) if degrees else 0,
+    }
+
+
+def generate_graph_features(graph: nx.Graph, *, include_centrality: bool = False) -> pd.DataFrame:
+    undirected = graph.to_undirected()
+    component_sizes: dict[str, int] = {}
+    for component in nx.connected_components(undirected):
+        size = len(component)
+        for node in component:
+            component_sizes[str(node)] = size
+
+    features = pd.DataFrame(index=[str(node) for node in graph.nodes()])
+    features.index.name = "ID"
+    features["degree"] = pd.Series(dict(graph.degree()), dtype=float)
+    features["weighted_degree"] = pd.Series(dict(graph.degree(weight="weight")), dtype=float)
+    features["clustering"] = pd.Series(nx.clustering(undirected), dtype=float)
+    features["component_size"] = pd.Series(component_sizes, dtype=float)
+    features["is_isolate"] = features["degree"].eq(0).astype(int)
+
+    if include_centrality:
+        features["betweenness"] = pd.Series(nx.betweenness_centrality(graph), dtype=float)
+        features["closeness"] = pd.Series(nx.closeness_centrality(graph), dtype=float)
+        try:
+            features["pagerank"] = pd.Series(nx.pagerank(graph, weight="weight"), dtype=float)
+        except nx.NetworkXException:
+            features["pagerank"] = np.nan
+
+    return features.reset_index()
+
+
+def numeric_node_attributes(
+    nodes: pd.DataFrame,
+    *,
+    id_column: str,
+    exclude_columns: Iterable[str],
+) -> pd.DataFrame:
+    excluded = set(exclude_columns)
+    numeric = nodes.drop(columns=[c for c in excluded if c in nodes.columns], errors="ignore")
+    numeric = numeric.select_dtypes(include=[np.number]).copy()
+    numeric[id_column] = nodes[id_column].astype(str)
+    return numeric.set_index(id_column)
+
+
+def train_outcome_model(
+    nodes: pd.DataFrame,
+    features: pd.DataFrame,
+    *,
+    id_column: str,
+    outcome_column: str,
+    output_dir: Path,
+    test_size: float = 0.2,
+    random_state: int = 42,
+) -> dict[str, object]:
+    if outcome_column not in nodes.columns:
+        raise ValueError(f"Outcome column not found: {outcome_column}")
+
+    graph_features = features.set_index("ID")
+    node_numeric = numeric_node_attributes(
+        nodes,
+        id_column=id_column,
+        exclude_columns=[id_column, outcome_column],
+    )
+    X = graph_features.join(node_numeric, how="left").fillna(0)
+
+    y = nodes.assign(**{id_column: nodes[id_column].astype(str)}).set_index(id_column)[outcome_column]
+    if y.dtype == "object":
+        y = y.astype("category")
+
+    class_counts = y.value_counts()
+    if len(class_counts) < 2:
+        raise ValueError("Outcome modeling needs at least two outcome classes")
+
+    stratify = y if class_counts.min() >= 2 else None
+    X_train, X_test, y_train, y_test = train_test_split(
+        X,
+        y,
+        test_size=test_size,
+        random_state=random_state,
+        stratify=stratify,
+    )
+
+    min_train_class = y_train.value_counts().min()
+    cv = min(5, int(min_train_class))
+    model = RandomForestClassifier(random_state=random_state, n_jobs=1)
+
+    if cv >= 2:
+        search = GridSearchCV(
+            model,
+            {"n_estimators": [100, 200], "max_depth": [None, 5, 10]},
+            cv=cv,
+            n_jobs=1,
+            scoring="f1_weighted",
+        )
+        search.fit(X_train, y_train)
+        fitted = search.best_estimator_
+        best_params = search.best_params_
+    else:
+        fitted = model.fit(X_train, y_train)
+        best_params = {"note": "insufficient class counts for cross-validation"}
+
+    predictions = fitted.predict(X_test)
+    precision, recall, f1, _ = precision_recall_fscore_support(
+        y_test,
+        predictions,
+        average="weighted",
+        zero_division=0,
+    )
+    metrics = {
+        "accuracy": float(accuracy_score(y_test, predictions)),
+        "precision_weighted": float(precision),
+        "recall_weighted": float(recall),
+        "f1_weighted": float(f1),
+        "best_params": best_params,
+        "train_rows": int(len(X_train)),
+        "test_rows": int(len(X_test)),
+        "classes": [str(c) for c in fitted.classes_],
+        "confusion_matrix": confusion_matrix(y_test, predictions).tolist(),
+    }
+
+    importance = pd.DataFrame(
+        {
+            "feature": X.columns,
+            "importance": fitted.feature_importances_,
+        }
+    ).sort_values("importance", ascending=False)
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    (output_dir / "model_metrics.json").write_text(json.dumps(metrics, indent=2) + "\n")
+    importance.to_csv(output_dir / "model_feature_importance.csv", index=False)
+    return metrics
+
+
+def select_target_nodes(
+    nodes: pd.DataFrame,
+    *,
+    id_column: str,
+    outcome_column: str | None,
+    target_outcome: str | None,
+    target_nodes: list[str],
+) -> list[str]:
+    if target_nodes:
+        return [str(node) for node in target_nodes]
+    if not outcome_column:
+        return []
+    if outcome_column not in nodes.columns:
+        raise ValueError(f"Outcome column not found: {outcome_column}")
+
+    outcome = nodes[outcome_column]
+    if target_outcome is None:
+        if pd.api.types.is_numeric_dtype(outcome):
+            target_value = outcome.max()
+        else:
+            raise ValueError("Pass --target-outcome for non-numeric outcomes")
+    else:
+        target_value = target_outcome
+        if pd.api.types.is_numeric_dtype(outcome):
+            target_value = pd.to_numeric(pd.Series([target_outcome]), errors="raise").iloc[0]
+
+    return nodes.loc[outcome.eq(target_value), id_column].astype(str).tolist()
+
+
+def shortest_path_records(
+    graph: nx.Graph,
+    *,
+    source_nodes: list[str],
+    target_nodes: list[str],
+    path_mode: str = "hops",
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    if path_mode == "hops":
+        weight = None
+    elif path_mode == "distance":
+        weight = "weight"
+    elif path_mode == "strength":
+        weight = strength_as_cost
+    else:
+        raise ValueError(f"Unknown path mode: {path_mode}")
+
+    sources = source_nodes or [str(node) for node in graph.nodes() if str(node) not in set(target_nodes)]
+    targets = [str(node) for node in target_nodes]
+    target_set = set(targets)
+
+    pair_records: list[dict[str, object]] = []
+    nearest_records: list[dict[str, object]] = []
+
+    for source in sources:
+        if source not in graph:
+            continue
+        best: dict[str, object] | None = None
+        for target in targets:
+            if target not in graph or source == target:
+                continue
+            try:
+                length = nx.shortest_path_length(graph, source, target, weight=weight)
+                path = nx.shortest_path(graph, source, target, weight=weight)
+                strength = path_strength(graph, path)
+                record = {
+                    "source": source,
+                    "target": target,
+                    "path_mode": path_mode,
+                    "path_cost": float(length),
+                    "distance": float(length),
+                    "hops": len(path) - 1,
+                    "path_strength": strength,
+                    "path": " -> ".join(map(str, path)),
+                }
+            except nx.NetworkXNoPath:
+                record = {
+                    "source": source,
+                    "target": target,
+                    "path_mode": path_mode,
+                    "path_cost": np.nan,
+                    "distance": np.nan,
+                    "hops": np.nan,
+                    "path_strength": np.nan,
+                    "path": "",
+                }
+            pair_records.append(record)
+            if record["path"] and (
+                best is None
+                or float(record["distance"]) < float(best["distance"])
+                or (
+                    float(record["distance"]) == float(best["distance"])
+                    and str(record["target"]) < str(best["target"])
+                )
+            ):
+                best = record
+
+        nearest_records.append(
+            {
+                "source": source,
+                "nearest_target": best["target"] if best else "",
+                "path_mode": path_mode,
+                "path_cost": best["path_cost"] if best else np.nan,
+                "distance": best["distance"] if best else np.nan,
+                "hops": best["hops"] if best else np.nan,
+                "path_strength": best["path_strength"] if best else np.nan,
+                "path": best["path"] if best else "",
+                "reachable_target_count": int(
+                    sum(1 for row in pair_records if row["source"] == source and row["path"])
+                ),
+                "target_count": len(target_set),
+            }
+        )
+
+    return pd.DataFrame(pair_records), pd.DataFrame(nearest_records)
+
+
+def strength_as_cost(_u: str, _v: str, attrs: dict[str, object]) -> float:
+    """Convert edge strength into a non-negative path cost.
+
+    This is useful only when `weight` is a normalized 0..1 relationship strength.
+    The path optimizer minimizes the sum of -log(strength), which is equivalent
+    to maximizing the product of edge strengths.
+    """
+    try:
+        strength = float(attrs.get("weight", 1.0))
+    except (TypeError, ValueError):
+        strength = 1.0
+    strength = min(max(strength, 1e-12), 1.0)
+    return -math.log(strength)
+
+
+def path_strength(graph: nx.Graph, path: list[str]) -> float:
+    if len(path) < 2:
+        return 1.0
+    product = 1.0
+    for source, target in zip(path[:-1], path[1:]):
+        attrs = graph.get_edge_data(source, target, default={})
+        if graph.is_multigraph():
+            attrs = next(iter(attrs.values()), {})
+        try:
+            product *= float(attrs.get("weight", 1.0))
+        except (TypeError, ValueError):
+            product *= 1.0
+    return float(product)
+
+
+def run(args: argparse.Namespace) -> dict[str, object]:
+    nodes, edges = load_tables(args.nodes, args.edges)
+    validation = validate_tables(
+        nodes,
+        edges,
+        id_column=args.id_column,
+        source_column=args.source_column,
+        target_column=args.target_column,
+        outcome_column=args.outcome_column if args.run_model else None,
+    )
+    graph = build_graph(
+        nodes,
+        edges,
+        id_column=args.id_column,
+        source_column=args.source_column,
+        target_column=args.target_column,
+        directed=args.directed,
+        weight_column=args.weight_column,
+    )
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    summary = {"validation": validation, "graph": graph_summary(graph)}
+    (output_dir / "graph_summary.json").write_text(json.dumps(summary, indent=2) + "\n")
+
+    features = generate_graph_features(graph, include_centrality=args.include_centrality)
+    features.to_csv(output_dir / "node_features.csv", index=False)
+
+    if args.run_paths:
+        targets = select_target_nodes(
+            nodes,
+            id_column=args.id_column,
+            outcome_column=args.outcome_column,
+            target_outcome=args.target_outcome,
+            target_nodes=split_csv_list(args.target_nodes),
+        )
+        if not targets:
+            raise ValueError("Shortest-path analysis needs --target-nodes or --outcome-column")
+        pairs, nearest = shortest_path_records(
+            graph,
+            source_nodes=split_csv_list(args.source_nodes),
+            target_nodes=targets,
+            path_mode=args.path_mode,
+        )
+        pairs.to_csv(output_dir / "shortest_paths.csv", index=False)
+        nearest.to_csv(output_dir / "nearest_targets.csv", index=False)
+        summary["shortest_paths"] = {
+            "source_count": int(nearest.shape[0]),
+            "target_count": len(targets),
+            "reachable_sources": int(nearest["path"].ne("").sum()) if not nearest.empty else 0,
+        }
+
+    if args.run_model:
+        if not args.outcome_column:
+            raise ValueError("Outcome modeling needs --outcome-column")
+        summary["model"] = train_outcome_model(
+            nodes,
+            features,
+            id_column=args.id_column,
+            outcome_column=args.outcome_column,
+            output_dir=output_dir,
+            test_size=args.test_size,
+            random_state=args.random_state,
+        )
+
+    (output_dir / "run_summary.json").write_text(json.dumps(summary, indent=2) + "\n")
+    return summary
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="General node/edge network analysis toolkit")
+    parser.add_argument("--nodes", default="synthetic_nodes.csv", help="Node CSV path")
+    parser.add_argument("--edges", default="synthetic_edges.csv", help="Edge CSV path")
+    parser.add_argument("--output-dir", default="epinet_outputs", help="Directory for generated CSV/JSON outputs")
+    parser.add_argument("--id-column", default="ID")
+    parser.add_argument("--source-column", default="SourceID")
+    parser.add_argument("--target-column", default="TargetID")
+    parser.add_argument("--outcome-column", default="Outcome", help="Outcome/target column for model and default paths")
+    parser.add_argument("--target-outcome", default="1", help="Outcome value treated as target nodes for paths")
+    parser.add_argument("--source-nodes", default="", help="Comma-separated source node IDs; default is all non-target nodes")
+    parser.add_argument("--target-nodes", default="", help="Comma-separated target node IDs; overrides target outcome")
+    parser.add_argument("--weight-column", default="", help="Optional edge column to copy into graph as numeric weight")
+    parser.add_argument(
+        "--path-mode",
+        choices=["hops", "distance", "strength"],
+        default="hops",
+        help=(
+            "Path objective: hops ignores weights; distance minimizes the copied weight column; "
+            "strength maximizes normalized 0..1 edge strengths via -log transform"
+        ),
+    )
+    parser.add_argument(
+        "--use-weighted-paths",
+        action="store_true",
+        help="Deprecated alias for --path-mode distance",
+    )
+    parser.add_argument("--directed", action="store_true", help="Treat edges as directed SourceID -> TargetID")
+    parser.add_argument("--include-centrality", action="store_true", help="Add betweenness, closeness, and PageRank features")
+    parser.add_argument("--run-model", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--run-paths", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--test-size", type=float, default=0.2)
+    parser.add_argument("--random-state", type=int, default=42)
+    return parser
+
+
+def main() -> None:
+    parser = build_parser()
+    args = parser.parse_args()
+    args.weight_column = args.weight_column or None
+    args.outcome_column = args.outcome_column or None
+    if args.use_weighted_paths:
+        args.path_mode = "distance"
+    summary = run(args)
+    print(json.dumps(summary, indent=2))
+    print(f"\nWrote outputs to {Path(args.output_dir).resolve()}")
+
+
+if __name__ == "__main__":
+    main()

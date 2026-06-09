@@ -1,244 +1,173 @@
+# EpiNet
 
-# Epilung EpiNet Analysis Project
+EpiNet is being shaped as a **general node/edge network analysis toolkit**.
+Epidemiology is one possible use case, but the core logic is intentionally broader:
+load entities and relationships, compute graph features, optionally train a simple
+outcome model, and run shortest-path analysis in parallel.
 
-## Overview
-Epilung EpiNet Analysis is an AI-driven framework designed to analyze epidemiological data through network theory and machine learning. It aims to identify patterns, predict outcomes, and provide actionable insights based on large-scale health data sets. The project combines epidemiological modeling with advanced data analysis techniques to offer a comprehensive tool for researchers and public health officials.
+This repository is still a prototype. It should be treated as a demonstrator, not
+clinical or public-health decision support.
 
-## Installation
+## What Is Implemented
 
-### Prerequisites
-- Python 3.8 or higher
-- pip
+- CSV node and edge loading.
+- Network construction with NetworkX.
+- Node-level graph features:
+  - degree
+  - weighted degree
+  - clustering
+  - component size
+  - isolate flag
+  - optional betweenness, closeness, and PageRank
+- Optional RandomForest outcome model using graph features plus numeric node attributes.
+- Shortest-path analysis from source nodes to explicit target nodes or to nodes with a target outcome.
+- CSV/JSON outputs for downstream inspection.
 
-### Libraries
-This project requires the following Python libraries:
-- NetworkX
-- NumPy
-- scikit-learn
-- matplotlib
+The older `epinet-analysis.py` and `epinet-analysis-v2.py` scripts remain as early prototypes.
+The recommended entry point is now `epinet_toolkit.py`.
 
-### Steps
-1. Clone the repository:
-```bash
-git clone https://github.com/heidihelena/epinet-analysis.git
-```
+## Quick Start
 
-2. Navigate to the project directory:
-```bash
-cd epinet-analysis
-```
-
-3. Install the required Python packages:
 ```bash
 pip install -r requirements.txt
+python epinet_toolkit.py \
+  --nodes synthetic_nodes.csv \
+  --edges synthetic_edges.csv \
+  --outcome-column Outcome \
+  --target-outcome 1 \
+  --output-dir epinet_outputs
 ```
 
+This runs the two main lenses side by side:
 
-Here's code:
+1. graph feature generation and a simple outcome model
+2. shortest-path summaries from non-target nodes to target outcome nodes
 
-```python
-import networkx as nx
-import numpy as np
-import pandas as pd
-from sklearn.model_selection import train_test_split, GridSearchCV
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score, precision_recall_fscore_support, confusion_matrix
-import matplotlib.pyplot as plt
+Generated files include:
 
-# Data Processing Module
-def load_data(nodes_file, edges_file):
-    # Load nodes and edges from CSV files
-    nodes = pd.read_csv(nodes_file)
-    edges = pd.read_csv(edges_file)
-    return nodes, edges
+- `graph_summary.json`
+- `node_features.csv`
+- `shortest_paths.csv`
+- `nearest_targets.csv`
+- `model_metrics.json`
+- `model_feature_importance.csv`
+- `run_summary.json`
 
-def construct_network(nodes, edges):
-    G = nx.Graph()
-    # Add nodes and edges with attributes
-    for index, row in nodes.iterrows():
-        G.add_node(row['ID'], **row.to_dict())
-    for index, row in edges.iterrows():
-        G.add_edge(row['SourceID'], row['TargetID'], **row.to_dict())
-    return G
+## Shortest-Path Examples
 
-# Feature Engineering Module
-selected_features = []  # Placeholder for predefined selected features
-def generate_features(G):
-    features = {}
-    for node in G.nodes():
-        node_data = G.nodes[node]
-        feature_vector = [node_data.get(feature, 0) for feature in selected_features]  # if selected_features else []
-        # Add network-based features
-        feature_vector.extend([
-            G.degree(node),
-            nx.centrality.betweenness_centrality(G, normalized=True).get(node, 0),
-            # Add other centrality measures as needed
-        ])
-        features[node] = feature_vector
-    return features
+Use outcome-positive nodes as targets:
 
-# Machine Learning Module
-def train_model(X, y, params):
-    model = RandomForestClassifier(random_state=42)
-    clf = GridSearchCV(model, params, cv=5)
-    clf.fit(X, y)
-    best_model = clf.best_estimator_
-    return best_model, clf.best_params_
-
-def evaluate_model(model, X_test, y_test):
-    y_pred = model.predict(X_test)
-    accuracy = accuracy_score(y_test, y_pred)
-    precision, recall, f1, _ = precision_recall_fscore_support(y_test, y_pred, average='binary')
-    print(f"Accuracy: {accuracy}\nPrecision: {precision}\nRecall: {recall}\nF1 Score: {f1}")
-    print("Confusion Matrix:", confusion_matrix(y_test, y_pred))
-
-# Main Workflow
-def main():
-    nodes, edges = load_data('nodes.csv', 'edges.csv')
-    G = construct_network(nodes, edges)
-    features = generate_features(G)
-    
-    X = pd.DataFrame.from_dict(features, orient='index')
-    y = nodes.set_index('ID')['Outcome']  # Assuming 'Outcome' is a column in nodes.csv indicating the target variable
-    
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-    
-    params = {'n_estimators': [100, 200, 300]}
-    model, best_params = train_model(X_train, y_train, params)
-    
-    print("Best Parameters:", best_params)
-    evaluate_model(model, X_test, y_test)
-
-if __name__ == "__main__":
-    main()
-```
-
-    
-## Usage
-
-To use the Epilung EpiNet Analysis framework, follow these steps:
-
-1. Prepare your epidemiological data according to the guidelines provided in the `data_format.md` file.
-2. Adjust the epinet-analysis to your project and create main.py. Run the main script with Python:
 ```bash
-python main.py
-```
-3. Follow the instructions in the script for inputting data and parameters.
-
-For more detailed usage instructions, refer to the `docs` directory.
-
-
-### Notes:
-- **Feature Selection**: The placeholder for `selected_features` needs to be populated with actual feature names expected to be part of the nodes' attributes. These should match the column names in your nodes CSV file.
-- **Outcome Variable**: The script now assumes there's an 'Outcome' column in your nodes CSV that represents the target variable for the ML model. Adjust the column name accordingly to match your data.
-- **Visualization Implementation**: While the visualization function is still a placeholder, consider using `nx.draw` or libraries like `PyVis` for more advanced and interactive network visualizations.
-
-
-To revise your code snippet for an automatic workflow that includes network visualization with `nx.draw` from NetworkX, I'll adjust your script to ensure it flows smoothly from loading data to generating a basic network visualization. This example assumes you have your network data prepared in two CSV files (`nodes.csv` and `edges.csv`), and you want to visualize the network as part of your analysis. 
-
-Note: For this script to work as intended, ensure your `nodes.csv` includes at least the columns `ID` for node identifiers and any other attributes you wish to visualize or analyze. Similarly, `edges.csv` should have at least `SourceID` and `TargetID` to define the connections between nodes.
-
-```python
-import networkx as nx
-import pandas as pd
-import matplotlib.pyplot as plt
-from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score, precision_recall_fscore_support, confusion_matrix
-
-# Data Processing Module
-def load_data(nodes_file, edges_file):
-    nodes = pd.read_csv(nodes_file)
-    edges = pd.read_csv(edges_file)
-    return nodes, edges
-
-def construct_network(nodes, edges):
-    G = nx.Graph()
-    for index, row in nodes.iterrows():
-        G.add_node(row['ID'], **row.to_dict())
-    for index, row in edges.iterrows():
-        G.add_edge(row['SourceID'], row['TargetID'], **row.to_dict())
-    return G
-
-# Visualization Module with nx.draw
-def visualize_network(G):
-    plt.figure(figsize=(12, 8))
-    nx.draw(G, with_labels=True, node_color='skyblue', node_size=50, edge_color='gray')
-    plt.title('Network Visualization')
-    plt.show()
-
-# Main Workflow
-def main():
-    nodes, edges = load_data('nodes.csv', 'edges.csv')
-    G = construct_network(nodes, edges)
-    
-    # Optional: Implement your feature engineering, ML model training, and evaluation here
-    
-    # For demonstration, we directly visualize the network
-    visualize_network(G)
-
-if __name__ == "__main__":
-    main()
+python epinet_toolkit.py --outcome-column Outcome --target-outcome 1
 ```
 
-### Key Adjustments:
-- **Visualization with `nx.draw`**: The `visualize_network` function uses `nx.draw` for a basic visualization. Adjustments like `node_color`, `node_size`, and `edge_color` are set for aesthetic purposes. You can customize these parameters further based on your needs.
-- **Simplified Workflow**: The script is streamlined to focus on loading the data, constructing the network, and visualizing it. This setup assumes that feature engineering and machine learning components are either handled separately or can be inserted into the `main` workflow as needed.
+Use explicit target nodes:
 
-### Additional Notes:
-- For larger networks, or if you find the visualization cluttered, consider using `nx.spring_layout(G)` or similar layout algorithms for better node positioning.
-- The script omits the machine learning components for brevity. Incorporate your model training and evaluation where the comment suggests, ensuring your features and labels are appropriately prepared from the network data.
-
-When applying colors in nx.draw visualization, you can map them based on node attributes or metrics. For instance, if you have a metric that quantifies the centrality or importance of a node in the spread of asthma or COPD, you could map this metric to your color scale so that the most important nodes are highlighted with your primary colors.
-
-
-Here’s a code example using NetworkX to apply Epilung palette to a network:
-
-```python
-def visualize_network(G, node_attribute):
-    plt.figure(figsize=(12, 8))
-    color_map = []
-
-    # Define your color based on the node attribute or other criteria
-    for node in G:
-        if G.nodes[node][node_attribute] == 'condition_A':
-            color_map.append('#87CEEB')  # Light blue for a certain condition
-        elif G.nodes[node][node_attribute] == 'condition_B':
-            color_map.append('#E8F196')  # Yellow for another condition
-        else:
-            color_map.append('#F8F0E6')  # Light grey for default nodes
-    
-    # Assuming 'pos' is a dictionary with node positions
-    pos = nx.spring_layout(G)
-
-    nx.draw(G, pos, node_color=color_map, with_labels=True, font_weight='bold', edge_color='#7C7873')
-    plt.title('Network Visualization')
-    plt.show()
-
-# ... rest of your code to call visualize_network
+```bash
+python epinet_toolkit.py --target-nodes Node_1,Node_5 --no-run-model
 ```
 
-Remember that effective visual communication in data visualization is not just about aesthetics but also about maki
-This script provides a foundational workflow for network-based analysis, including a straightforward visualization step that can be further refined or expanded based on your project's specific requirements.
+Limit the sources:
 
-## Contributing
+```bash
+python epinet_toolkit.py --source-nodes Node_0,Node_9 --target-nodes Node_42 --no-run-model
+```
 
-We welcome contributions from the community! If you're interested in contributing, please follow these steps:
+Treat edges as directed:
 
-1. Fork the repository.
-2. Create a new branch for your feature or bug fix.
-3. Commit your changes with clear, descriptive messages.
-4. Push the branch to your fork.
-5. Submit a pull request to the main repository.
+```bash
+python epinet_toolkit.py --directed --target-nodes Node_42 --no-run-model
+```
 
-For more details, see the `CONTRIBUTING.md` file.
+Use an edge weight column as path distance:
+
+```bash
+python epinet_toolkit.py --weight-column Weight --path-mode distance --target-nodes Node_42 --no-run-model
+```
+
+Be careful: many datasets store edge weight as relationship strength, not distance.
+If a larger weight means a stronger or more frequent connection, it should not be used
+directly as a shortest-path distance without transformation.
+
+If an edge column is a normalized 0..1 strength, you can ask for the strongest route:
+
+```bash
+python epinet_toolkit.py --weight-column Weight --path-mode strength --target-nodes Node_42 --no-run-model
+```
+
+## CiteMatch Evidence Graph Example
+
+The `examples/` directory includes a small CiteMatch-style evidence graph:
+
+- `examples/citematch_nodes.csv`
+- `examples/citematch_edges.csv`
+- `examples/citematch_usecase.md`
+
+Run nearest contrast-evidence paths for three claims:
+
+```bash
+python epinet_toolkit.py \
+  --nodes examples/citematch_nodes.csv \
+  --edges examples/citematch_edges.csv \
+  --outcome-column Outcome \
+  --target-outcome contrast_evidence \
+  --source-nodes claim_osimertinib_dfs,claim_osimertinib_os,claim_chemo_required \
+  --no-run-model \
+  --output-dir examples/citematch_outputs/contrast_paths
+```
+
+This is the safer non-epidemiology use case: the toolkit maps evidence structure
+around claims and papers. It does not infer whether a claim is true.
+
+For CiteMatch, avoid calling this a fastest path unless an edge column truly encodes
+time or delay. The useful question is usually the best evidence route: nearest by
+hops, lowest evidence distance, or strongest relationship path.
+
+## Data Model
+
+Nodes are entities: people, places, organizations, studies, grants, hospitals,
+events, risks, exposures, pathway steps, or any other objects.
+
+Edges are relationships or flows between nodes: contact, referral, collaboration,
+co-authorship, transition, shared exposure, communication, dependency, or movement.
+
+Default node columns:
+
+- `ID`: unique node identifier
+- `Outcome`: optional target label for modeling/path targeting
+
+Default edge columns:
+
+- `SourceID`
+- `TargetID`
+- optional `Weight`
+
+See `Data-format.md` for details.
+
+## Methodological Boundaries
+
+The model is intentionally simple. It does not infer causality, outbreak dynamics,
+clinical risk, or intervention effects. Network features can be useful descriptors,
+but they can also encode sampling bias, measurement bias, and structural confounding.
+
+Use the outputs as exploratory evidence, not as decisions.
+
+Before using this for health, education, welfare, employment, or public-sector
+decisions, add:
+
+- domain-specific data validation
+- directed/temporal assumptions
+- uncertainty and sensitivity checks
+- external validation
+- privacy and governance review
+- human review of any operational recommendations
+
+## Tests
+
+```bash
+python -m unittest discover -s tests
+```
 
 ## License
 
-This project is licensed under the MIT License - see the `LICENSE` file for details.
-
-## Contact
-
-For questions or further information, please contact the project maintainers:
-- Dr. Heidi Andersén (heidi.andersen@tuni.fi)
-- https://github.com/heidihelena
+MIT. See `LICENSE`.

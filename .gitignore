@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+
+epinet_outputs/
+examples/citematch_outputs/
+trained_model.joblib
+confusion_matrix.png
+
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/

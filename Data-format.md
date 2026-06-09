@@ -1,69 +1,94 @@
-# Data Format Guidelines for EpiNet Analysis
+# Data Format
 
-## Overview
+EpiNet expects two CSV files: one for nodes and one for edges. The schema is
+domain-neutral so the same toolkit can be used for epidemiology, clinical pathways,
+research collaboration networks, referral systems, grant maps, patient journeys, or
+other graph-shaped problems.
 
-This document outlines the data format requirements for the EpiNet Analysis project. To ensure compatibility and optimal analysis performance, please format your epidemiological data according to the specifications detailed below.
+## Nodes
 
-## Data Structure
+Required:
 
-The EpiNet Analysis project processes data structured as a network of nodes and edges, where nodes represent entities (e.g., individuals, locations, risk factors) and edges represent relationships or interactions between these entities.
-
-### Nodes
-
-Each node in the network should be represented by a unique identifier and can have multiple attributes associated with it. The following attributes are required for each node:
-
-- **ID**: A unique identifier (integer or string).
-- **Type**: The type of entity (e.g., "Individual", "Location").
-- Additional attributes relevant to the analysis (e.g., age, sex, health status for individuals).
-
-Node data should be provided in a CSV file with the following format:
-
-```
-ID,Type,Attribute1,Attribute2,...
-1,Individual,25,Male,...
-2,Location,Downtown,...
+```csv
+ID
 ```
 
-### Edges
+Optional but commonly useful:
 
-Edges represent the relationships or interactions between nodes. Each edge should specify the IDs of the two nodes it connects, along with any attributes relevant to that connection (e.g., relationship type, interaction strength).
-
-Edge data should be provided in a CSV file with the following format:
-
-```
-SourceID,TargetID,Attribute1,Attribute2,...
-1,2,Friend,High,...
+```csv
+Outcome,Type,Label,Group,Time,Feature1,Feature2,...
 ```
 
-## File Format
+Example:
 
-- All data should be provided in CSV (Comma-Separated Values) format.
-- UTF-8 encoding is recommended to support a wide range of characters.
-
-## Example
-
-Here's a simple example illustrating the expected data format:
-
-**nodes.csv**
-```
-ID,Type,Age,Sex
-1,Individual,25,Male
-2,Individual,30,Female
-3,Location,CityCenter
+```csv
+ID,Outcome,Type,Age,Clinic
+Patient_1,1,Patient,62,A
+Patient_2,0,Patient,44,B
+Clinic_A,,Clinic,,
 ```
 
-**edges.csv**
+Rules:
+
+- `ID` must be unique.
+- `Outcome` is optional. If present, it can be used for outcome modeling and for
+  defining target nodes in shortest-path analysis.
+- Numeric node attributes are added to the optional outcome model.
+- Missing values should be meaningful. The toolkit does not assume that blank,
+  unknown, not measured, and zero are the same thing.
+
+## Edges
+
+Required:
+
+```csv
+SourceID,TargetID
 ```
-SourceID,TargetID,Relationship,InteractionStrength
-1,2,Friend,High
-1,3,Visits,Daily
-2,3,Visits,Weekly
+
+Optional:
+
+```csv
+Weight,Relationship,Time,Direction,Metadata...
 ```
 
-## Tips for Data Preparation
+Example:
 
-- Ensure that IDs are consistent across the node and edge files.
-- Remove any duplicate or irrelevant entries before submission.
-- Verify that all required attributes are included for each node and edge.
+```csv
+SourceID,TargetID,Weight,Relationship
+Patient_1,Clinic_A,1.0,visit
+Patient_2,Clinic_A,1.0,visit
+```
 
-By following these data format guidelines, you will help streamline the data ingestion and analysis process, enabling more accurate and efficient outcomes from the EpiNet Analysis project.
+Rules:
+
+- Every `SourceID` and `TargetID` must exist in the node file.
+- By default, edges are treated as undirected.
+- Pass `--directed` if `SourceID -> TargetID` direction matters.
+- Pass `--weight-column Weight` to copy an edge column into the graph as `weight`.
+- Pass `--path-mode distance` only if the weight column represents distance, cost,
+  delay, or impedance.
+- Pass `--path-mode strength` only if the weight column is a normalized 0..1
+  relationship strength. Internally, the toolkit converts strength into a
+  non-negative cost with `-log(strength)`.
+- Do not call a route "fastest" unless an edge column truly encodes time or delay.
+
+## Outputs
+
+Typical outputs:
+
+- `graph_summary.json`: node/edge counts, density, components, isolates.
+- `node_features.csv`: graph-derived node features.
+- `nearest_targets.csv`: nearest target node and shortest path per source.
+- `shortest_paths.csv`: source-target path table.
+- `model_metrics.json`: optional outcome-model metrics.
+- `model_feature_importance.csv`: optional RandomForest feature importances.
+
+## Minimum Example
+
+```bash
+python epinet_toolkit.py \
+  --nodes synthetic_nodes.csv \
+  --edges synthetic_edges.csv \
+  --outcome-column Outcome \
+  --target-outcome 1
+```

@@ -1,0 +1,18 @@
+ID,Type,Label,Outcome,Domain
+claim_osimertinib_dfs,Claim,Adjuvant osimertinib improves disease-free survival in resected EGFR-mutated NSCLC,claim,thoracic-oncology
+claim_osimertinib_os,Claim,Adjuvant osimertinib improves overall survival in resected EGFR-mutated NSCLC,claim,thoracic-oncology
+claim_chemo_required,Claim,Adjuvant chemotherapy remains required in the osimertinib era,claim,thoracic-oncology
+paper_adaura_nejm,Paper,ADAURA primary trial,support_evidence,thoracic-oncology
+paper_adaura_os,Paper,ADAURA overall survival update,support_evidence,thoracic-oncology
+paper_chemo_review,Paper,Review of chemotherapy after targeted adjuvant therapy,context_evidence,thoracic-oncology
+paper_real_world,Paper,Real-world EGFR adjuvant treatment cohort,context_evidence,thoracic-oncology
+paper_contrast_editorial,Paper,Editorial questioning chemotherapy necessity after osimertinib,contrast_evidence,thoracic-oncology
+topic_egfr,Topic,EGFR-mutated NSCLC,context,thoracic-oncology
+topic_adjuvant,Topic,Adjuvant therapy,context,oncology
+topic_survival,Topic,Survival endpoints,context,methods
+method_rct,Method,Randomized controlled trial,context,methods
+method_real_world,Method,Real-world evidence,context,methods
+journal_nejm,Journal,New England Journal of Medicine,context,publishing
+journal_jto,Journal,Journal of Thoracic Oncology,context,publishing
+author_wu,Author,Wu YL,context,researcher
+author_herbst,Author,Herbst RS,context,researcher
