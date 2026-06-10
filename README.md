@@ -20,8 +20,14 @@ clinical or public-health decision support.
   - isolate flag
   - optional betweenness, closeness, and PageRank
 - Optional RandomForest outcome model using graph features plus numeric node attributes.
+- Iterative model evaluation over repeated train/test splits, reporting the
+  mean, standard deviation, and range of each metric instead of a single noisy split.
 - Shortest-path analysis from source nodes to explicit target nodes or to nodes with a target outcome.
+- Per-target coverage summaries — the counterpart to the per-source nearest-target
+  table — showing how many sources reach each target and at what distance.
 - CSV/JSON outputs for downstream inspection.
+- Publication-style PNG figures (`epinet_viz.py`): network overview, degree
+  distribution, feature importance, metric stability, and confusion matrix.
 
 The older `epinet-analysis.py` and `epinet-analysis-v2.py` scripts remain as early prototypes.
 The recommended entry point is now `epinet_toolkit.py`.
@@ -48,10 +54,43 @@ Generated files include:
 - `graph_summary.json`
 - `node_features.csv`
 - `shortest_paths.csv`
-- `nearest_targets.csv`
-- `model_metrics.json`
-- `model_feature_importance.csv`
+- `nearest_targets.csv` — per source: nearest target and best path
+- `target_coverage.csv` — per target: how many sources reach it, min/mean/max distance
+- `model_metrics.json` — primary-split metrics plus an `iteration_summary` block
+- `model_feature_importance.csv` — mean importance across iterations, with `importance_std`
+- `model_iteration_metrics.csv` — one row of metrics per evaluation iteration
 - `run_summary.json`
+- `plots/*.png` — see Visualization below
+
+## Iterative Evaluation
+
+On small networks a single train/test split is a noisy estimate: the same model
+can score 0.35 or 0.55 accuracy depending on which nodes land in the test set.
+By default the toolkit re-evaluates the model on 10 different splits
+(`--n-iterations 10`) with hyperparameters tuned once on the primary split, and
+reports the spread:
+
+```json
+"iteration_summary": {
+  "accuracy": {"mean": 0.44, "std": 0.06, "min": 0.35, "max": 0.55}
+}
+```
+
+If the mean is near chance, the graph features carry no signal for the outcome —
+which is exactly what the bundled random synthetic data shows. Use
+`--n-iterations 1` to reproduce the old single-split behavior, or raise it for
+tighter estimates.
+
+## Visualization
+
+Every run writes figures to `<output-dir>/plots/` (disable with `--no-make-plots`):
+
+- `network_overview.png` — spring layout colored by outcome, target nodes
+  outlined in red, nearest source→target paths overlaid
+- `degree_distribution.png`
+- `feature_importance.png` — error bars show cross-iteration variability
+- `metric_stability.png` — box plot of metrics across evaluation iterations
+- `confusion_matrix.png` — held-out test set of the primary split
 
 ## Shortest-Path Examples
 

@@ -20,6 +20,7 @@ from typing import Iterable
 import networkx as nx
 import numpy as np
 import pandas as pd
+from sklearn.base import clone
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, confusion_matrix, precision_recall_fscore_support
 from sklearn.model_selection import GridSearchCV, train_test_split
@@ -88,13 +89,11 @@ def build_graph(
 ) -> nx.Graph:
     graph: nx.Graph = nx.DiGraph() if directed else nx.Graph()
 
-    for _, row in nodes.iterrows():
-        attrs = row.to_dict()
+    for attrs in nodes.to_dict("records"):
         node_id = str(attrs.pop(id_column))
         graph.add_node(node_id, **attrs)
 
-    for _, row in edges.iterrows():
-        attrs = row.to_dict()
+    for attrs in edges.to_dict("records"):
         source = str(attrs.pop(source_column))
         target = str(attrs.pop(target_column))
         if weight_column and weight_column in attrs:
@@ -159,6 +158,42 @@ def numeric_node_attributes(
     return numeric.set_index(id_column)
 
 
+def _split_and_score(
+    X: pd.DataFrame,
+    y: pd.Series,
+    model: RandomForestClassifier,
+    *,
+    test_size: float,
+    random_state: int,
+    stratify_ok: bool,
+) -> tuple[RandomForestClassifier, dict[str, object], pd.Series, pd.Series]:
+    X_train, X_test, y_train, y_test = train_test_split(
+        X,
+        y,
+        test_size=test_size,
+        random_state=random_state,
+        stratify=y if stratify_ok else None,
+    )
+    fitted = clone(model).set_params(random_state=random_state).fit(X_train, y_train)
+    predictions = fitted.predict(X_test)
+    precision, recall, f1, _ = precision_recall_fscore_support(
+        y_test,
+        predictions,
+        average="weighted",
+        zero_division=0,
+    )
+    metrics = {
+        "random_state": random_state,
+        "accuracy": float(accuracy_score(y_test, predictions)),
+        "precision_weighted": float(precision),
+        "recall_weighted": float(recall),
+        "f1_weighted": float(f1),
+        "train_rows": int(len(X_train)),
+        "test_rows": int(len(X_test)),
+    }
+    return fitted, metrics, y_test, pd.Series(predictions, index=y_test.index)
+
+
 def train_outcome_model(
     nodes: pd.DataFrame,
     features: pd.DataFrame,
@@ -168,9 +203,24 @@ def train_outcome_model(
     output_dir: Path,
     test_size: float = 0.2,
     random_state: int = 42,
+    n_iterations: int = 1,
 ) -> dict[str, object]:
+    """Fit and evaluate the outcome model, optionally over repeated splits.
+
+    A single train/test split is a noisy estimate on small networks, so when
+    ``n_iterations > 1`` the model is re-evaluated on ``n_iterations`` different
+    splits (seeds ``random_state .. random_state + n_iterations - 1``) and the
+    summary reports the mean, standard deviation, and range of each metric.
+    Hyperparameters are tuned once on the primary split and held fixed across
+    iterations so the loop measures split variance, not tuning variance.
+
+    Returns a dict with keys ``metrics`` (JSON-serializable summary),
+    ``importance`` (DataFrame), and ``iteration_metrics`` (DataFrame).
+    """
     if outcome_column not in nodes.columns:
         raise ValueError(f"Outcome column not found: {outcome_column}")
+    if n_iterations < 1:
+        raise ValueError("n_iterations must be at least 1")
 
     graph_features = features.set_index("ID")
     node_numeric = numeric_node_attributes(
@@ -188,64 +238,106 @@ def train_outcome_model(
     if len(class_counts) < 2:
         raise ValueError("Outcome modeling needs at least two outcome classes")
 
-    stratify = y if class_counts.min() >= 2 else None
+    stratify_ok = bool(class_counts.min() >= 2)
+
+    # Tune hyperparameters once on the primary split.
     X_train, X_test, y_train, y_test = train_test_split(
         X,
         y,
         test_size=test_size,
         random_state=random_state,
-        stratify=stratify,
+        stratify=y if stratify_ok else None,
     )
-
     min_train_class = y_train.value_counts().min()
     cv = min(5, int(min_train_class))
-    model = RandomForestClassifier(random_state=random_state, n_jobs=1)
+    base_model = RandomForestClassifier(random_state=random_state, n_jobs=1)
 
     if cv >= 2:
         search = GridSearchCV(
-            model,
+            base_model,
             {"n_estimators": [100, 200], "max_depth": [None, 5, 10]},
             cv=cv,
             n_jobs=1,
             scoring="f1_weighted",
         )
         search.fit(X_train, y_train)
-        fitted = search.best_estimator_
+        tuned_model = search.best_estimator_
         best_params = search.best_params_
     else:
-        fitted = model.fit(X_train, y_train)
+        tuned_model = base_model
         best_params = {"note": "insufficient class counts for cross-validation"}
 
-    predictions = fitted.predict(X_test)
-    precision, recall, f1, _ = precision_recall_fscore_support(
-        y_test,
-        predictions,
-        average="weighted",
-        zero_division=0,
-    )
-    metrics = {
-        "accuracy": float(accuracy_score(y_test, predictions)),
-        "precision_weighted": float(precision),
-        "recall_weighted": float(recall),
-        "f1_weighted": float(f1),
-        "best_params": best_params,
-        "train_rows": int(len(X_train)),
-        "test_rows": int(len(X_test)),
-        "classes": [str(c) for c in fitted.classes_],
-        "confusion_matrix": confusion_matrix(y_test, predictions).tolist(),
-    }
+    # Iterative evaluation: re-split and re-fit with the tuned configuration.
+    iteration_rows: list[dict[str, object]] = []
+    importance_runs: list[np.ndarray] = []
+    primary_fit: RandomForestClassifier | None = None
+    primary_truth: pd.Series | None = None
+    primary_predictions: pd.Series | None = None
+    for i in range(n_iterations):
+        fitted, row, truth, predictions = _split_and_score(
+            X,
+            y,
+            tuned_model,
+            test_size=test_size,
+            random_state=random_state + i,
+            stratify_ok=stratify_ok,
+        )
+        row["iteration"] = i
+        iteration_rows.append(row)
+        importance_runs.append(fitted.feature_importances_)
+        if i == 0:
+            primary_fit = fitted
+            primary_truth = truth
+            primary_predictions = predictions
 
+    iteration_metrics = pd.DataFrame(iteration_rows)
+    metric_columns = ["accuracy", "precision_weighted", "recall_weighted", "f1_weighted"]
+    metrics: dict[str, object] = {
+        column: float(iteration_metrics[column].iloc[0]) for column in metric_columns
+    }
+    metrics.update(
+        {
+            "best_params": best_params,
+            "n_iterations": n_iterations,
+            "train_rows": int(iteration_metrics["train_rows"].iloc[0]),
+            "test_rows": int(iteration_metrics["test_rows"].iloc[0]),
+            "classes": [str(c) for c in primary_fit.classes_],
+            "confusion_matrix": confusion_matrix(primary_truth, primary_predictions).tolist(),
+        }
+    )
+    if n_iterations > 1:
+        metrics["iteration_summary"] = {
+            column: {
+                "mean": float(iteration_metrics[column].mean()),
+                "std": float(iteration_metrics[column].std(ddof=1)),
+                "min": float(iteration_metrics[column].min()),
+                "max": float(iteration_metrics[column].max()),
+            }
+            for column in metric_columns
+        }
+
+    importance_array = np.vstack(importance_runs)
     importance = pd.DataFrame(
         {
             "feature": X.columns,
-            "importance": fitted.feature_importances_,
+            "importance": importance_array.mean(axis=0),
         }
-    ).sort_values("importance", ascending=False)
+    )
+    if n_iterations > 1:
+        importance["importance_std"] = importance_array.std(axis=0, ddof=1)
+    importance = importance.sort_values("importance", ascending=False)
 
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "model_metrics.json").write_text(json.dumps(metrics, indent=2) + "\n")
     importance.to_csv(output_dir / "model_feature_importance.csv", index=False)
-    return metrics
+    if n_iterations > 1:
+        iteration_metrics.to_csv(output_dir / "model_iteration_metrics.csv", index=False)
+
+    return {
+        "metrics": metrics,
+        "importance": importance,
+        "iteration_metrics": iteration_metrics,
+    }
 
 
 def select_target_nodes(
@@ -304,6 +396,7 @@ def shortest_path_records(
         if source not in graph:
             continue
         best: dict[str, object] | None = None
+        reachable_count = 0
         for target in targets:
             if target not in graph or source == target:
                 continue
@@ -333,15 +426,17 @@ def shortest_path_records(
                     "path": "",
                 }
             pair_records.append(record)
-            if record["path"] and (
-                best is None
-                or float(record["distance"]) < float(best["distance"])
-                or (
-                    float(record["distance"]) == float(best["distance"])
-                    and str(record["target"]) < str(best["target"])
-                )
-            ):
-                best = record
+            if record["path"]:
+                reachable_count += 1
+                if (
+                    best is None
+                    or float(record["distance"]) < float(best["distance"])
+                    or (
+                        float(record["distance"]) == float(best["distance"])
+                        and str(record["target"]) < str(best["target"])
+                    )
+                ):
+                    best = record
 
         nearest_records.append(
             {
@@ -353,14 +448,51 @@ def shortest_path_records(
                 "hops": best["hops"] if best else np.nan,
                 "path_strength": best["path_strength"] if best else np.nan,
                 "path": best["path"] if best else "",
-                "reachable_target_count": int(
-                    sum(1 for row in pair_records if row["source"] == source and row["path"])
-                ),
+                "reachable_target_count": reachable_count,
                 "target_count": len(target_set),
             }
         )
 
     return pd.DataFrame(pair_records), pd.DataFrame(nearest_records)
+
+
+def target_coverage_records(pairs: pd.DataFrame) -> pd.DataFrame:
+    """Per-target counterpart to the per-source nearest-target table.
+
+    `nearest_targets.csv` answers "how far is each source from its nearest
+    target?"; this answers the reverse question: "how well is each target
+    covered by the sources?" — how many sources reach it and at what cost.
+    """
+    if pairs.empty:
+        return pd.DataFrame(
+            columns=[
+                "target",
+                "source_count",
+                "reachable_source_count",
+                "coverage",
+                "min_distance",
+                "mean_distance",
+                "max_distance",
+                "mean_hops",
+            ]
+        )
+
+    records = []
+    for target, group in pairs.groupby("target", sort=True):
+        reachable = group[group["path"].astype(str).ne("") & group["path"].notna()]
+        records.append(
+            {
+                "target": target,
+                "source_count": int(len(group)),
+                "reachable_source_count": int(len(reachable)),
+                "coverage": float(len(reachable) / len(group)) if len(group) else 0.0,
+                "min_distance": float(reachable["distance"].min()) if not reachable.empty else np.nan,
+                "mean_distance": float(reachable["distance"].mean()) if not reachable.empty else np.nan,
+                "max_distance": float(reachable["distance"].max()) if not reachable.empty else np.nan,
+                "mean_hops": float(reachable["hops"].mean()) if not reachable.empty else np.nan,
+            }
+        )
+    return pd.DataFrame(records)
 
 
 def strength_as_cost(_u: str, _v: str, attrs: dict[str, object]) -> float:
@@ -421,6 +553,8 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     features = generate_graph_features(graph, include_centrality=args.include_centrality)
     features.to_csv(output_dir / "node_features.csv", index=False)
 
+    targets: list[str] = []
+    nearest: pd.DataFrame | None = None
     if args.run_paths:
         targets = select_target_nodes(
             nodes,
@@ -437,18 +571,23 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             target_nodes=targets,
             path_mode=args.path_mode,
         )
+        coverage = target_coverage_records(pairs)
         pairs.to_csv(output_dir / "shortest_paths.csv", index=False)
         nearest.to_csv(output_dir / "nearest_targets.csv", index=False)
+        coverage.to_csv(output_dir / "target_coverage.csv", index=False)
         summary["shortest_paths"] = {
             "source_count": int(nearest.shape[0]),
             "target_count": len(targets),
             "reachable_sources": int(nearest["path"].ne("").sum()) if not nearest.empty else 0,
+            "fully_covered_targets": int(coverage["coverage"].eq(1.0).sum()) if not coverage.empty else 0,
+            "unreached_targets": int(coverage["reachable_source_count"].eq(0).sum()) if not coverage.empty else 0,
         }
 
+    model_result: dict[str, object] | None = None
     if args.run_model:
         if not args.outcome_column:
             raise ValueError("Outcome modeling needs --outcome-column")
-        summary["model"] = train_outcome_model(
+        model_result = train_outcome_model(
             nodes,
             features,
             id_column=args.id_column,
@@ -456,7 +595,25 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             output_dir=output_dir,
             test_size=args.test_size,
             random_state=args.random_state,
+            n_iterations=getattr(args, "n_iterations", 1),
         )
+        summary["model"] = model_result["metrics"]
+
+    if getattr(args, "make_plots", False):
+        import epinet_viz
+
+        plots = epinet_viz.generate_run_plots(
+            graph,
+            output_dir,
+            outcome_attribute=args.outcome_column if args.outcome_column in nodes.columns else None,
+            target_nodes=targets,
+            nearest=nearest,
+            metrics=model_result["metrics"] if model_result else None,
+            importance=model_result["importance"] if model_result else None,
+            iteration_metrics=model_result["iteration_metrics"] if model_result else None,
+            seed=args.random_state,
+        )
+        summary["plots"] = [str(path.relative_to(output_dir)) for path in plots]
 
     (output_dir / "run_summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     return summary
@@ -493,6 +650,21 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--include-centrality", action="store_true", help="Add betweenness, closeness, and PageRank features")
     parser.add_argument("--run-model", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--run-paths", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument(
+        "--make-plots",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Write PNG figures (network, degree distribution, model diagnostics) to <output-dir>/plots",
+    )
+    parser.add_argument(
+        "--n-iterations",
+        type=int,
+        default=10,
+        help=(
+            "Repeated train/test evaluations of the outcome model; >1 reports "
+            "mean/std/min/max per metric to expose split-to-split variance"
+        ),
+    )
     parser.add_argument("--test-size", type=float, default=0.2)
     parser.add_argument("--random-state", type=int, default=42)
     return parser

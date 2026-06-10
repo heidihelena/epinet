@@ -1,11 +1,14 @@
+import json
 import tempfile
 import unittest
 from argparse import Namespace
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 import epinet_toolkit as et
+import epinet_viz as ev
 
 
 class ToolkitTests(unittest.TestCase):
@@ -163,6 +166,133 @@ class ToolkitTests(unittest.TestCase):
         row = nearest.iloc[0]
         self.assertEqual(row["path"], "A -> B -> T")
         self.assertAlmostEqual(row["path_strength"], 0.72)
+
+    def test_target_coverage_summarizes_per_target_reachability(self):
+        nodes = pd.DataFrame([{"ID": node} for node in ["A", "B", "C", "T1", "T2"]])
+        edges = pd.DataFrame(
+            [
+                {"SourceID": "A", "TargetID": "B"},
+                {"SourceID": "B", "TargetID": "T1"},
+                # C and T2 are isolated from the main component.
+                {"SourceID": "C", "TargetID": "T2"},
+            ]
+        )
+        graph = et.build_graph(nodes, edges)
+        pairs, nearest = et.shortest_path_records(
+            graph,
+            source_nodes=["A", "B", "C"],
+            target_nodes=["T1", "T2"],
+        )
+        coverage = et.target_coverage_records(pairs).set_index("target")
+
+        self.assertEqual(coverage.loc["T1", "reachable_source_count"], 2)
+        self.assertEqual(coverage.loc["T2", "reachable_source_count"], 1)
+        self.assertAlmostEqual(coverage.loc["T1", "coverage"], 2 / 3)
+        self.assertAlmostEqual(coverage.loc["T1", "min_distance"], 1.0)
+        self.assertAlmostEqual(coverage.loc["T1", "mean_distance"], 1.5)
+        # reachable_target_count in nearest must match the pair table.
+        self.assertEqual(
+            int(nearest.loc[nearest["source"].eq("A"), "reachable_target_count"].iloc[0]), 1
+        )
+
+    def _synthetic_run_args(self, root: Path, out: Path, **overrides) -> Namespace:
+        nodes = root / "nodes.csv"
+        edges = root / "edges.csv"
+        rng = np.random.default_rng(0)
+        node_rows = ["ID,Outcome,Value"]
+        for i in range(30):
+            node_rows.append(f"N{i},{i % 2},{rng.random():.4f}")
+        nodes.write_text("\n".join(node_rows) + "\n")
+        edge_rows = ["SourceID,TargetID"]
+        for i in range(29):
+            edge_rows.append(f"N{i},N{i + 1}")
+        edges.write_text("\n".join(edge_rows) + "\n")
+        args = Namespace(
+            nodes=str(nodes),
+            edges=str(edges),
+            output_dir=str(out),
+            id_column="ID",
+            source_column="SourceID",
+            target_column="TargetID",
+            outcome_column="Outcome",
+            target_outcome="1",
+            source_nodes="",
+            target_nodes="",
+            weight_column=None,
+            use_weighted_paths=False,
+            path_mode="hops",
+            directed=False,
+            include_centrality=False,
+            run_model=True,
+            run_paths=True,
+            make_plots=False,
+            n_iterations=1,
+            test_size=0.2,
+            random_state=42,
+        )
+        for key, value in overrides.items():
+            setattr(args, key, value)
+        return args
+
+    def test_iterative_model_evaluation_reports_metric_spread(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            out = root / "out"
+            args = self._synthetic_run_args(root, out, n_iterations=3)
+            summary = et.run(args)
+
+            model = summary["model"]
+            self.assertEqual(model["n_iterations"], 3)
+            self.assertIn("iteration_summary", model)
+            self.assertIn("mean", model["iteration_summary"]["f1_weighted"])
+
+            iteration_metrics = pd.read_csv(out / "model_iteration_metrics.csv")
+            self.assertEqual(len(iteration_metrics), 3)
+            self.assertEqual(iteration_metrics["random_state"].tolist(), [42, 43, 44])
+
+            importance = pd.read_csv(out / "model_feature_importance.csv")
+            self.assertIn("importance_std", importance.columns)
+
+            persisted = json.loads((out / "model_metrics.json").read_text())
+            self.assertIn("iteration_summary", persisted)
+
+    def test_single_iteration_keeps_legacy_outputs(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            out = root / "out"
+            summary = et.run(self._synthetic_run_args(root, out, n_iterations=1))
+            self.assertNotIn("iteration_summary", summary["model"])
+            self.assertFalse((out / "model_iteration_metrics.csv").exists())
+            self.assertTrue((out / "target_coverage.csv").exists())
+
+    def test_run_writes_plots(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            out = root / "out"
+            args = self._synthetic_run_args(root, out, n_iterations=3, make_plots=True)
+            summary = et.run(args)
+
+            self.assertIn("plots", summary)
+            expected = {
+                "network_overview.png",
+                "degree_distribution.png",
+                "feature_importance.png",
+                "confusion_matrix.png",
+                "metric_stability.png",
+            }
+            written = {Path(p).name for p in summary["plots"]}
+            self.assertEqual(written, expected)
+            for plot in summary["plots"]:
+                self.assertGreater((out / plot).stat().st_size, 0)
+
+    def test_plot_network_handles_missing_outcome(self):
+        graph = et.build_graph(
+            pd.DataFrame([{"ID": "A"}, {"ID": "B"}]),
+            pd.DataFrame([{"SourceID": "A", "TargetID": "B"}]),
+        )
+        with tempfile.TemporaryDirectory() as td:
+            path = ev.plot_network(graph, Path(td) / "net.png")
+            self.assertGreater(path.stat().st_size, 0)
 
 
 if __name__ == "__main__":
