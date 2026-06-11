@@ -74,6 +74,10 @@ tell me — that changes the split strategy (see below).
   (how far the call is from flipping), `runner_up_class` (the differential),
   `contested` (the most fragile fraction), and `most_decision_relevant_feature`
   with its `single_axis_flip_distance` (the marker that would settle it).
+- `contestability_report.md` — a ready-to-read table of the most-contested cases
+  and the value-of-information ranking, with the caveats inline.
+- `plots/contestability.png` — flip-distance histogram (contested tail shaded)
+  beside the value-of-information bar chart.
 - `plots/network.html` — interactive, draggable subtype-similarity network.
 - the standard diagnostic figures (confusion matrix, permutation null, …).
 

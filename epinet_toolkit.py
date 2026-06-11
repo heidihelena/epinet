@@ -785,6 +785,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         )
         summary["clusters"] = cluster_result["summary"]
 
+    contest_result: dict[str, object] | None = None
     if getattr(args, "run_contest", False):
         import epinet_contest
 
@@ -827,6 +828,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             iteration_metrics=model_result["iteration_metrics"] if model_result else None,
             permutation_metrics=model_result["permutation_metrics"] if model_result else None,
             clustering=cluster_result,
+            contestability=contest_result,
             seed=args.random_state,
             image_format=getattr(args, "plot_format", "png"),
             interactive=getattr(args, "interactive_network", False),

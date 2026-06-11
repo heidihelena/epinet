@@ -98,7 +98,7 @@ Each example has a builder script and a walkthrough (`examples/*_usecase.md`):
 | LIDC-IDRI / LUNA16 | real radiologist annotations; the "indeterminate" hedge tier; reader-disagreement topography |
 | Pathology validation | radiologist tier vs tissue diagnosis; the hedge bucket is 93% malignant; specification-curve sensitivity |
 | Score comparison & fusion | Brock vs Mayo vs NTOG; does combining tests help? |
-| **Lymphoma workflow** | turnkey digital-pathology → subtype-classifier model (`examples/lymphoma_workflow_usecase.md`) |
+| **Lymphoma workflow** | turnkey digital-pathology → subtype classifier; five subtypes with real confusable pairs (CLL/MCL, DLBCL/Burkitt) + a grey-zone contestability read that names cyclin D1 as the marker to settle the hard cases (`examples/lymphoma_workflow_usecase.md`) |
 | NLST harness | ingestion stub for the NLST dataset (run when CDAS data arrives) |
 
 ## Quick Start (continued)
@@ -197,6 +197,8 @@ Every run writes figures to `<output-dir>/plots/` (disable with `--no-make-plots
 - `confusion_matrix` — counts plus row-normalized recall, labeled colorbar
 - `permutation_null` — null distribution vs observed F1 (with `--permutation-test`)
 - `feature_clusters` — PCA projection with explained-variance axis labels
+- `contestability` — flip-distance histogram with the contested tail shaded, beside
+  the value-of-information bar chart (with `--run-contest`)
 
 All figures share one house style (consistent typography, no chartjunk spines,
 colorblind-friendly Okabe-Ito palette) and render at 300 DPI by default. Use
@@ -522,7 +524,11 @@ the nodule cohort the most-contested cases sit between adjacent risk tiers with
 flip-distances near zero, and the decisive feature is consistently diameter — a
 machine-checkable echo of the score-comparison finding that diameter carries the
 discrimination. `contest_summary.json` adds the cohort-level flip-distance
-distribution and a global feature-leverage ranking.
+distribution and a global feature-leverage ranking, `contestability_report.md`
+is a ready-to-read table of the most-contested cases and the value-of-information
+ranking, and (under `--make-plots`) `plots/contestability.png` shows the
+flip-distance histogram with the contested tail shaded beside the
+value-of-information bars.
 
 Two cautions are load-bearing, and are written into the output's `caveats` field
 rather than left to the reader:

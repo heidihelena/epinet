@@ -422,6 +422,65 @@ def plot_confusion_matrix(
     return _save(fig, output_path)
 
 
+def plot_contestability(
+    assignments: pd.DataFrame,
+    summary: dict,
+    output_path: Path,
+    *,
+    top_n: int = 12,
+) -> Path:
+    """Two-panel contestability figure for the ``--run-contest`` lens.
+
+    Left: histogram of per-case flip-distance with the contested region (at or
+    below the threshold) shaded in the highlight color. Right: the
+    value-of-information ranking — the features that most drive boundary flips.
+    """
+    flip = assignments["flip_distance"].to_numpy(dtype=float)
+    flip = flip[np.isfinite(flip)]
+    flip_summary = summary.get("flip_distance", {})
+    threshold = flip_summary.get("contest_threshold")
+    n_contested = flip_summary.get("n_contested", 0)
+    leverage = summary.get("feature_leverage", {})
+
+    fig, (ax_hist, ax_voi) = plt.subplots(1, 2, figsize=(11, 4.6))
+
+    # Left panel: flip-distance distribution, contested tail shaded.
+    if flip.size:
+        bins = min(30, max(8, flip.size // 5))
+        _, edges, patches = ax_hist.hist(flip, bins=bins, color=CATEGORY_COLORS[0], alpha=0.85)
+        if threshold is not None and np.isfinite(threshold):
+            for patch, left_edge in zip(patches, edges[:-1]):
+                if left_edge < threshold:
+                    patch.set_facecolor(HIGHLIGHT)
+            ax_hist.axvline(
+                threshold,
+                color=HIGHLIGHT,
+                linewidth=2,
+                label=f"contested ≤ {threshold:.3g} (n={n_contested})",
+            )
+            ax_hist.legend()
+    ax_hist.set_xlabel("flip-distance (standardized-feature units)")
+    ax_hist.set_ylabel("Cases")
+    ax_hist.set_title("How far is each call from flipping?")
+    ax_hist.grid(axis="y", alpha=0.3)
+
+    # Right panel: value-of-information — features that most drive boundary flips.
+    items = list(leverage.items())[:top_n][::-1]
+    if items:
+        names = [name for name, _ in items]
+        shares = [value for _, value in items]
+        ax_voi.barh(names, shares, color=CATEGORY_COLORS[2])
+        ax_voi.set_xlabel("mean flip-gradient share")
+        ax_voi.set_title("Value of information: decisive features")
+        ax_voi.grid(axis="x", alpha=0.3)
+        ax_voi.margins(y=0.01)
+    else:
+        ax_voi.axis("off")
+
+    fig.tight_layout()
+    return _save(fig, output_path)
+
+
 def generate_run_plots(
     graph: nx.Graph,
     output_dir: Path,
@@ -434,6 +493,7 @@ def generate_run_plots(
     iteration_metrics: pd.DataFrame | None = None,
     permutation_metrics: pd.DataFrame | None = None,
     clustering: dict | None = None,
+    contestability: dict | None = None,
     seed: int = 42,
     image_format: str = "png",
     interactive: bool = False,
@@ -517,6 +577,18 @@ def generate_run_plots(
                 fp("feature_clusters"),
                 outcomes=outcomes,
                 metric=clustering["summary"].get("distance_metric", "euclidean"),
+            )
+        )
+    if (
+        contestability is not None
+        and contestability.get("assignments") is not None
+        and "flip_distance" in contestability["assignments"].columns
+    ):
+        written.append(
+            plot_contestability(
+                contestability["assignments"],
+                contestability["summary"],
+                fp("contestability"),
             )
         )
 

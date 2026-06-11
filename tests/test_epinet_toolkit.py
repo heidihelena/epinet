@@ -740,6 +740,49 @@ class ContestabilityTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             ecn.contestability(X, y=y)
 
+    def test_contestability_report_is_markdown_with_tables(self):
+        X = pd.DataFrame(
+            {"f1": [0.0, 0.2, 5.0, 5.2, 2.5], "f2": [0.0, 0.1, 5.0, 4.9, 2.4]},
+            index=["a1", "a2", "b1", "b2", "mid"],
+        )
+        y = pd.Series(["a", "a", "b", "b", "a"], index=X.index, name="Outcome")
+        result = ecn.contestability(X, y=y)
+        report = ecn.contestability_report(result["assignments"], result["summary"])
+        self.assertIn("# Contestability report", report)
+        self.assertIn("## Most contested cases", report)
+        self.assertIn("## Value of information", report)
+        self.assertIn("## Caveats", report)
+        self.assertIn("| case | call | would flip to | flip-distance | decisive feature |", report)
+        # The most-contested case (the midpoint) heads the table.
+        body = report.split("## Most contested cases", 1)[1]
+        self.assertIn("mid", body.split("## Value of information", 1)[0])
+
+    def test_run_contestability_writes_markdown_report(self):
+        with tempfile.TemporaryDirectory() as td:
+            out = Path(td)
+            X = pd.DataFrame(
+                {"f1": [0.0, 0.3, 5.0, 5.3, 2.5], "f2": [0.0, 0.2, 5.0, 4.8, 2.5]},
+                index=[f"n{i}" for i in range(5)],
+            )
+            y = pd.Series(["a", "a", "b", "b", "a"], index=X.index, name="Outcome")
+            ecn.run_contestability(X, out, y=y)
+            self.assertTrue((out / "contestability_report.md").exists())
+            self.assertIn("Contestability report", (out / "contestability_report.md").read_text())
+
+    def test_plot_contestability_writes_panel(self):
+        with tempfile.TemporaryDirectory() as td:
+            X = pd.DataFrame(
+                {"f1": list(np.linspace(0, 5, 10)), "f2": list(np.linspace(0, 5, 10))},
+                index=[f"n{i}" for i in range(10)],
+            )
+            y = pd.Series(["a"] * 5 + ["b"] * 5, index=X.index, name="Outcome")
+            result = ecn.contestability(X, y=y)
+            path = ev.plot_contestability(
+                result["assignments"], result["summary"], Path(td) / "contestability.png"
+            )
+            self.assertTrue(path.exists())
+            self.assertGreater(path.stat().st_size, 0)
+
     def test_cli_run_writes_contestability_outputs(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
@@ -751,6 +794,7 @@ class ContestabilityTests(unittest.TestCase):
             self.assertIn("contestability", summary)
             self.assertTrue((out / "node_contestability.csv").exists())
             self.assertTrue((out / "contest_summary.json").exists())
+            self.assertTrue((out / "contestability_report.md").exists())
             frame = pd.read_csv(out / "node_contestability.csv")
             for column in ["flip_distance", "runner_up_class", "contested",
                            "most_decision_relevant_feature"]:

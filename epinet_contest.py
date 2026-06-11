@@ -242,11 +242,85 @@ def run_contestability(
     metric: str = "euclidean",
     contest_quantile: float = 0.1,
 ) -> dict[str, object]:
-    """Score contestability and write node_contestability.csv + contest_summary.json."""
+    """Score contestability and write the CSV, JSON, and markdown report."""
     result = contestability(X, y=y, metric=metric, contest_quantile=contest_quantile)
     output_dir.mkdir(parents=True, exist_ok=True)
     result["assignments"].to_csv(output_dir / "node_contestability.csv", index=False)
     (output_dir / "contest_summary.json").write_text(
         json.dumps(result["summary"], indent=2) + "\n"
     )
+    (output_dir / "contestability_report.md").write_text(
+        contestability_report(result["assignments"], result["summary"]) + "\n"
+    )
     return result
+
+
+def _markdown_table(headers: list[str], rows: list[list[object]]) -> str:
+    """A minimal GitHub-flavored markdown table (no third-party dependency)."""
+    lines = [
+        "| " + " | ".join(headers) + " |",
+        "| " + " | ".join("---" for _ in headers) + " |",
+    ]
+    for row in rows:
+        lines.append("| " + " | ".join(str(cell) for cell in row) + " |")
+    return "\n".join(lines)
+
+
+def contestability_report(
+    assignments: pd.DataFrame,
+    summary: dict,
+    *,
+    top_n: int = 10,
+) -> str:
+    """Render a human-readable markdown report: most-contested cases + the
+    value-of-information ranking + the caveats. Companion to the CSV/JSON."""
+    flip = summary["flip_distance"]
+    threshold = flip["contest_threshold"]
+    threshold_text = f"{threshold:.3g}" if np.isfinite(threshold) else "∞"
+
+    out = [
+        "# Contestability report",
+        "",
+        f"Metric: **{summary['distance_metric']}** · scored {summary['n_scored']} "
+        f"cases · {flip['n_contested']} contested "
+        f"(flip-distance ≤ {threshold_text}, lowest {flip['contest_quantile']:.0%}).",
+        "",
+        "## Most contested cases",
+        "",
+        "The calls nearest to flipping, with the single feature that would most "
+        "cheaply settle each (value of information).",
+        "",
+    ]
+    contested = assignments.sort_values("flip_distance").head(top_n)
+    case_rows = []
+    for _, row in contested.iterrows():
+        value = row["flip_distance"]
+        case_rows.append([
+            row["ID"],
+            row["nearest_class_centroid"],
+            row["runner_up_class"],
+            f"{value:.3g}" if np.isfinite(value) else "∞",
+            row["most_decision_relevant_feature"],
+        ])
+    out.append(_markdown_table(
+        ["case", "call", "would flip to", "flip-distance", "decisive feature"],
+        case_rows,
+    ))
+
+    out += [
+        "",
+        "## Value of information",
+        "",
+        "Features that most drive boundary flips across the cohort "
+        "(mean flip-gradient share).",
+        "",
+    ]
+    voi_rows = [
+        [name, f"{share:.3f}"]
+        for name, share in list(summary.get("feature_leverage", {}).items())[:top_n]
+    ]
+    out.append(_markdown_table(["feature", "leverage"], voi_rows))
+
+    out += ["", "## Caveats", ""]
+    out += [f"- {caveat}" for caveat in summary.get("caveats", [])]
+    return "\n".join(out)
