@@ -3,6 +3,7 @@ import sys
 import tempfile
 import unittest
 from argparse import Namespace
+from datetime import date
 from pathlib import Path
 
 import numpy as np
@@ -12,6 +13,7 @@ import epinet_cluster as ec
 import epinet_common as ecommon
 import epinet_contest as ecn
 import epinet_federated as efed
+import epinet_governance as eg
 import epinet_toolkit as et
 import epinet_viz as ev
 
@@ -1142,6 +1144,90 @@ class FederatedContestabilityTests(unittest.TestCase):
         fed_flip = pd.Series(local).reindex(X.index).to_numpy()
         diff = float(np.max(np.abs(fed_flip - central_flip.to_numpy())))
         self.assertLess(diff, 1e-6)
+
+
+class GovernanceGateTests(unittest.TestCase):
+    """The egress gate fails closed and discloses exactly what crosses."""
+
+    NOW = date(2026, 6, 11)
+
+    def _consent(self, **overrides):
+        base = dict(
+            site="A", controller="A Trust", lawful_basis="GDPR Art 9(2)(j)",
+            dpia_reference="DPIA-1", purpose="research", version="v1",
+            allowed_tier="aggregate", coi_acknowledged=True, expires="2027-01-01",
+        )
+        base.update(overrides)
+        return eg.Consent(**base)
+
+    def _payload(self, common=40, rare=3):
+        return {"n": common + rare, "class_n": {"common": common, "rare": rare},
+                "class_sum": {"common": [1.0], "rare": [1.0]}}
+
+    def test_valid_egress_returns_manifest_and_suppresses_small_cells(self):
+        policy = eg.DisclosurePolicy(min_cell=5)
+        redacted, manifest = eg.check_egress(
+            self._payload(), policy=policy, consent=self._consent(), now=self.NOW)
+        self.assertNotIn("rare", redacted["class_n"])     # suppressed (3 < 5)
+        self.assertIn("common", redacted["class_n"])
+        self.assertEqual(manifest["suppressed_cells"], ["class_n[rare]=3"])
+        self.assertEqual(len(manifest["payload_sha256"]), 64)
+
+    def test_missing_required_field_is_refused(self):
+        with self.assertRaises(eg.GovernanceError):
+            eg.check_egress(self._payload(), policy=eg.DisclosurePolicy(),
+                            consent=self._consent(dpia_reference=""), now=self.NOW)
+
+    def test_coi_not_acknowledged_is_refused(self):
+        with self.assertRaises(eg.GovernanceError):
+            eg.check_egress(self._payload(), policy=eg.DisclosurePolicy(),
+                            consent=self._consent(coi_acknowledged=False), now=self.NOW)
+
+    def test_expired_consent_is_refused(self):
+        with self.assertRaises(eg.GovernanceError):
+            eg.check_egress(self._payload(), policy=eg.DisclosurePolicy(),
+                            consent=self._consent(expires="2020-01-01"), now=self.NOW)
+
+    def test_tier_above_allowance_is_refused(self):
+        with self.assertRaises(eg.GovernanceError):
+            eg.check_egress(self._payload(), policy=eg.DisclosurePolicy(allowed_tier="aggregate"),
+                            consent=self._consent(allowed_tier="derived"), tier="derived",
+                            now=self.NOW)
+
+    def test_identifiable_tier_is_always_refused(self):
+        with self.assertRaises(eg.GovernanceError):
+            eg.check_egress(self._payload(),
+                            policy=eg.DisclosurePolicy(allowed_tier="identifiable"),
+                            consent=self._consent(allowed_tier="identifiable"),
+                            tier="identifiable", now=self.NOW)
+
+    def test_identifying_field_in_payload_is_refused(self):
+        payload = {"n": 50, "columns": ["patient_id", "age"]}
+        with self.assertRaises(eg.GovernanceError):
+            eg.check_egress(payload, policy=eg.DisclosurePolicy(),
+                            consent=self._consent(), now=self.NOW)
+
+    def test_record_floor_is_enforced(self):
+        # An aggregate over fewer than min_cell records is refused outright.
+        with self.assertRaises(eg.GovernanceError):
+            eg.check_egress({"n": 3, "class_n": {"a": 3}}, policy=eg.DisclosurePolicy(min_cell=5),
+                            consent=self._consent(), now=self.NOW)
+
+    def test_audit_chain_verifies_and_detects_tampering(self):
+        audit = eg.AuditLedger()
+        eg.check_egress(self._payload(), policy=eg.DisclosurePolicy(min_cell=5),
+                        consent=self._consent(), audit=audit, now=self.NOW,
+                        timestamp="2026-06-11T00:00:00+00:00")
+        self.assertTrue(audit.verify())
+        audit.entries[0]["event"]["manifest"]["record_count"] = 9999
+        self.assertFalse(audit.verify())
+
+    def test_suppress_small_cells_handles_runner_up_counts(self):
+        payload = {"n_scored": 100, "runner_up_counts": {"a": 80, "b": 2}}
+        redacted, suppressed = eg.suppress_small_cells(payload, min_cell=5)
+        self.assertNotIn("b", redacted["runner_up_counts"])
+        self.assertIn("a", redacted["runner_up_counts"])
+        self.assertEqual(suppressed, ["runner_up_counts[b]=2"])
 
 
 class RegistryAdapterTests(unittest.TestCase):

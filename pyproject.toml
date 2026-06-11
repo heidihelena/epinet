@@ -44,6 +44,7 @@ py-modules = [
     "epinet_ingest",
     "epinet_federated",
     "epinet_registry",
+    "epinet_governance",
 ]
 
 [tool.pytest.ini_options]
