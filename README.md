@@ -24,6 +24,16 @@ evaluation is the default path**: a label-permutation null, calibration, and
 so a good score reflects real signal rather than leakage or chance. Developed as
 part of **Vahian**; MIT licensed.
 
+## What it looks like
+
+![Contestability panel on a lymphoma cohort](examples/sample-outputs/lymphoma/contestability.png)
+
+*The contestability lens on the lymphoma grey-zone example. Left: how far each
+call is from flipping, with the most-contested tail shaded. Right: value of
+information — the features that most drive boundary flips (CD10, cyclin D1,
+Ki67, …). The same lens runs on any cohort. More figures in
+[examples/sample-outputs/](examples/sample-outputs/).*
+
 ## What it does
 
 - **Graph features** — degree, weighted degree, clustering, component size,
