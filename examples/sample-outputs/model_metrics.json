@@ -1,0 +1,221 @@
+{
+  "accuracy": 0.6,
+  "balanced_accuracy": 0.5858585858585859,
+  "mcc": 0.17910620335162064,
+  "precision_weighted": 0.5956043956043956,
+  "recall_weighted": 0.6,
+  "f1_weighted": 0.5916666666666666,
+  "roc_auc": 0.39898989898989895,
+  "average_precision": 0.5161646832699465,
+  "brier": 0.33159000000000005,
+  "best_params": {
+    "max_depth": null,
+    "n_estimators": 100
+  },
+  "n_iterations": 10,
+  "split_strategy": "random",
+  "labeled_rows": 100,
+  "unlabeled_excluded": 0,
+  "n_classes": 2,
+  "train_rows": 80,
+  "test_rows": 20,
+  "classes": [
+    "0",
+    "1"
+  ],
+  "confusion_matrix": [
+    [
+      4,
+      5
+    ],
+    [
+      3,
+      8
+    ]
+  ],
+  "iteration_summary": {
+    "accuracy": {
+      "mean": 0.56,
+      "std": 0.05163977794943222,
+      "min": 0.5,
+      "max": 0.65
+    },
+    "balanced_accuracy": {
+      "mean": 0.5404040404040404,
+      "std": 0.05350252047835254,
+      "min": 0.46464646464646464,
+      "max": 0.6212121212121212
+    },
+    "mcc": {
+      "mean": 0.08994380641699844,
+      "std": 0.12702760238912003,
+      "min": -0.09851341054817479,
+      "max": 0.30151134457776363
+    },
+    "precision_weighted": {
+      "mean": 0.5537476028873088,
+      "std": 0.07361087038418808,
+      "min": 0.44117647058823534,
+      "max": 0.68125
+    },
+    "recall_weighted": {
+      "mean": 0.56,
+      "std": 0.05163977794943222,
+      "min": 0.5,
+      "max": 0.65
+    },
+    "f1_weighted": {
+      "mean": 0.5349939073110127,
+      "std": 0.05981559472803423,
+      "min": 0.42857142857142866,
+      "max": 0.6150997150997151
+    },
+    "roc_auc": {
+      "mean": 0.544949494949495,
+      "std": 0.08259287397641422,
+      "min": 0.39898989898989895,
+      "max": 0.6414141414141414
+    },
+    "average_precision": {
+      "mean": 0.634380028726004,
+      "std": 0.08816781022124925,
+      "min": 0.5146855669582943,
+      "max": 0.7676028915263365
+    },
+    "brier": {
+      "mean": 0.29034550000000003,
+      "std": 0.03836227403539403,
+      "min": 0.228215,
+      "max": 0.33737999999999996
+    }
+  },
+  "iteration_summary_note": "std/min/max describe variability across overlapping random re-splits, not an independent-sample confidence interval; because the splits share data they tend to UNDERestimate true uncertainty (Nadeau & Bengio, 2003). See primary_split_bootstrap_ci for a within-split interval.",
+  "calibration": {
+    "brier": 0.33159000000000005,
+    "slope": -0.5759272719087626,
+    "intercept": 0.38318586826327367,
+    "positive_class": "1",
+    "note": "Perfect calibration: slope 1, intercept 0. Slope < 1 = over-confident."
+  },
+  "primary_split_bootstrap_ci": {
+    "n_bootstrap": 1000,
+    "level": "95%",
+    "metrics": {
+      "accuracy": {
+        "lower": 0.4,
+        "upper": 0.8
+      },
+      "balanced_accuracy": {
+        "lower": 0.373502886002886,
+        "upper": 0.8133116883116882
+      },
+      "mcc": {
+        "lower": -0.2872863776428027,
+        "upper": 0.6546536707079772
+      },
+      "f1_weighted": {
+        "lower": 0.3604395604395604,
+        "upper": 0.8065934065934066
+      },
+      "roc_auc": {
+        "lower": 0.14285714285714288,
+        "upper": 0.7084821428571426
+      },
+      "brier": {
+        "lower": 0.23079424999999995,
+        "upper": 0.43307687500000003
+      }
+    }
+  },
+  "importance_kind": "permutation",
+  "permutation_test": {
+    "n_permutations": 50,
+    "metrics": {
+      "accuracy": {
+        "observed_mean": 0.56,
+        "null_mean": 0.508,
+        "null_std": 0.05597922355113328,
+        "p_value": 0.17647058823529413
+      },
+      "balanced_accuracy": {
+        "observed_mean": 0.5404040404040404,
+        "null_mean": 0.496888888888889,
+        "null_std": 0.05723191494681182,
+        "p_value": 0.2549019607843137
+      },
+      "mcc": {
+        "observed_mean": 0.08994380641699844,
+        "null_mean": -0.007194425661518155,
+        "null_std": 0.12045105444645965,
+        "p_value": 0.2549019607843137
+      },
+      "precision_weighted": {
+        "observed_mean": 0.5537476028873088,
+        "null_mean": 0.5011064057678647,
+        "null_std": 0.062363245501772524,
+        "p_value": 0.23529411764705882
+      },
+      "recall_weighted": {
+        "observed_mean": 0.56,
+        "null_mean": 0.508,
+        "null_std": 0.05597922355113328,
+        "p_value": 0.17647058823529413
+      },
+      "f1_weighted": {
+        "observed_mean": 0.5349939073110127,
+        "null_mean": 0.49572394306790896,
+        "null_std": 0.05832001560620778,
+        "p_value": 0.29411764705882354
+      },
+      "roc_auc": {
+        "observed_mean": 0.544949494949495,
+        "null_mean": 0.4907373737373738,
+        "null_std": 0.07691506387140709,
+        "p_value": 0.2549019607843137
+      },
+      "average_precision": {
+        "observed_mean": 0.634380028726004,
+        "null_mean": 0.606744382373576,
+        "null_std": 0.056133148704923176,
+        "p_value": 0.29411764705882354
+      },
+      "brier": {
+        "observed_mean": 0.29034550000000003,
+        "null_mean": 0.29258051,
+        "null_std": 0.023955743971955833,
+        "p_value": 0.5098039215686274
+      }
+    },
+    "multiplicity_note": "9 metrics tested simultaneously; p-values are NOT corrected for multiple comparisons \u2014 read them jointly, not as independent significance tests."
+  },
+  "provenance": {
+    "epinet_version": "0.2.0",
+    "git": {
+      "available": true,
+      "commit": "005126162864684d87e0c6171b0b3673b30a44be",
+      "dirty": true
+    },
+    "python_version": "3.11.8",
+    "packages": {
+      "numpy": "2.4.6",
+      "pandas": "3.0.3",
+      "scikit-learn": "1.9.0",
+      "networkx": "3.6.1",
+      "scipy": "1.17.1",
+      "matplotlib": "3.10.9"
+    },
+    "random_seed": 42,
+    "created_utc": "2026-06-11T19:34:43+00:00",
+    "input_sha256": {
+      "synthetic_nodes.csv": "a32585a87f30dab84528902c14d56a7ce7d91eb4a5ea751dadefa76c658fcdad",
+      "synthetic_edges.csv": "40ea0ed65092e4293d5648c18fbe0bc794234a4390862c12e5431615cd42545f"
+    },
+    "normalization": {
+      "normalized": true,
+      "n_operations": 0,
+      "operations": [],
+      "normalized_nodes_sha256": "88f94fa6a10dc29bcbc8b69d1a73c9ecb8a9824c461a3f520404e506b7abd32c",
+      "normalized_edges_sha256": "6b8b326613f7ac69f172e9022778f1fe21f2fea14aaf904d1cf002d8bc94fb42"
+    }
+  }
+}
