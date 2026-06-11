@@ -1,16 +1,11 @@
-% EpiNet JOSS paper references.
-% PubMed-VERIFIED (PMID + DOI confirmed via PubMed MCP): datashield, tibshirani2002, rieke2020.
-% TRIPOD+AI (tripodai): PMID 41448505 found by search but DOI/metadata UNCONFIRMED this
-%   session — the DOI below is the widely-cited one; confirm before submission.
-% NOT PubMed-indexed (ML/stats), NOT machine-verified this session — confirm on
-%   the publisher/arXiv before submission: ledoit2004, nadeau2003, vancalster2019,
-%   networkx, scikit-learn.
-
 @article{datashield,
-  author  = {Gaye, Amadou and others},
+  author  = {Gaye, Amadou and Marcon, Yannick and Isaeva, Julia and others},
   title   = {{DataSHIELD}: taking the analysis to the data, not the data to the analysis},
   journal = {International Journal of Epidemiology},
   year    = {2014},
+  volume  = {43},
+  number  = {6},
+  pages   = {1929--1944},
   doi     = {10.1093/ije/dyu188}
 }
 
@@ -19,24 +14,40 @@
   title   = {Diagnosis of multiple cancer types by shrunken centroids of gene expression},
   journal = {Proceedings of the National Academy of Sciences},
   year    = {2002},
+  volume  = {99},
+  number  = {10},
+  pages   = {6567--6572},
   doi     = {10.1073/pnas.082099299}
 }
 
 @article{rieke2020,
-  author  = {Rieke, Nicola and others},
+  author  = {Rieke, Nicola and Hancox, Jonny and Li, Wenqi and others},
   title   = {The future of digital health with federated learning},
   journal = {npj Digital Medicine},
   year    = {2020},
+  volume  = {3},
+  pages   = {119},
   doi     = {10.1038/s41746-020-00323-1}
 }
 
 @article{tripodai,
-  author  = {Collins, Gary S. and others},
+  author  = {Collins, Gary S. and Moons, Karel G. M. and Dhiman, Paula and others},
   title   = {{TRIPOD+AI} statement: updated guidance for reporting clinical prediction models that use regression or machine learning methods},
   journal = {BMJ},
   year    = {2024},
-  doi     = {10.1136/bmj-2023-078378},
-  note    = {DOI/metadata unconfirmed this session; verify before submission}
+  volume  = {385},
+  pages   = {e078378},
+  doi     = {10.1136/bmj-2023-078378}
+}
+
+@article{vancalster2019,
+  author  = {Van Calster, Ben and McLernon, David J. and van Smeden, Maarten and Wynants, Laure and Steyerberg, Ewout W.},
+  title   = {Calibration: the {Achilles} heel of predictive analytics},
+  journal = {BMC Medicine},
+  year    = {2019},
+  volume  = {17},
+  pages   = {230},
+  doi     = {10.1186/s12916-019-1466-7}
 }
 
 @article{ledoit2004,
@@ -47,7 +58,7 @@
   volume  = {88},
   number  = {2},
   pages   = {365--411},
-  note    = {Not machine-verified this session; confirm before submission}
+  doi     = {10.1016/S0047-259X(03)00096-4}
 }
 
 @article{nadeau2003,
@@ -56,28 +67,21 @@
   journal = {Machine Learning},
   year    = {2003},
   volume  = {52},
+  number  = {3},
   pages   = {239--281},
-  note    = {Not machine-verified this session; confirm before submission}
+  doi     = {10.1023/A:1024068626366}
 }
 
-@article{vancalster2019,
-  author  = {Van Calster, Ben and McLernon, David J. and van Smeden, Maarten and Wynants, Laure and Steyerberg, Ewout W.},
-  title   = {Calibration: the Achilles heel of predictive analytics},
-  journal = {BMC Medicine},
-  year    = {2019},
-  note    = {PubMed-indexed but not machine-verified this session; confirm before submission}
-}
-
-@article{networkx,
-  author  = {Hagberg, Aric A. and Schult, Daniel A. and Swart, Pieter J.},
-  title   = {Exploring network structure, dynamics, and function using {NetworkX}},
-  journal = {Proceedings of the 7th Python in Science Conference (SciPy)},
-  year    = {2008},
-  pages   = {11--15}
+@inproceedings{networkx,
+  author    = {Hagberg, Aric A. and Schult, Daniel A. and Swart, Pieter J.},
+  title     = {Exploring network structure, dynamics, and function using {NetworkX}},
+  booktitle = {Proceedings of the 7th Python in Science Conference (SciPy 2008)},
+  year      = {2008},
+  pages     = {11--15}
 }
 
 @article{scikit-learn,
-  author  = {Pedregosa, Fabian and others},
+  author  = {Pedregosa, Fabian and Varoquaux, Ga{\"e}l and Gramfort, Alexandre and others},
   title   = {Scikit-learn: Machine Learning in {Python}},
   journal = {Journal of Machine Learning Research},
   year    = {2011},

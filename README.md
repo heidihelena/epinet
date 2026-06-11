@@ -25,7 +25,7 @@ What distinguishes EpiNet from a thin scikit-learn wrapper is that **honest
 evaluation is the default path**: a label-permutation null, calibration, and
 (where appropriate) community-aware splitting run alongside the headline metric,
 so a good score reflects real signal rather than leakage or chance. Developed as
-part of **Vahian**; MIT licensed.
+part of **Vahtian**; MIT licensed.
 
 ## What it looks like
 
