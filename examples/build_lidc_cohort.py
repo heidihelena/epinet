@@ -59,20 +59,31 @@ def malignancy_tier(median_malignancy: float) -> str:
     return "indeterminate"
 
 
-def extract_nodules(max_scans: int | None = None) -> list[dict]:
-    """Cluster annotations into nodules and aggregate reader ratings."""
+def extract_nodules(max_scans: int | None = None, luna16: bool = False) -> list[dict]:
+    """Cluster annotations into nodules and aggregate reader ratings.
+
+    ``luna16`` reconstructs the LUNA16 cohort *definition* from LIDC: scans with
+    slice thickness <= 2.5 mm and nodules accepted by >= 3 of 4 radiologists.
+    This is a reconstruction from LIDC (which we have), not the LUNA16 download;
+    it omits LUNA16's extra slice-spacing-consistency exclusion, so scan counts
+    are ~1% above LUNA16's published 888.
+    """
     nodules: list[dict] = []
     scans = pl.query(pl.Scan).all()
     if max_scans is not None:
         scans = scans[:max_scans]
 
     for si, scan in enumerate(scans):
+        if luna16 and (scan.slice_thickness is None or scan.slice_thickness > 2.5):
+            continue
         try:
             clusters = scan.cluster_annotations(verbose=False)
         except Exception:
             continue
         for ni, anns in enumerate(clusters):
             if not anns:
+                continue
+            if luna16 and len(anns) < 3:   # LUNA16: >=3 of 4 readers
                 continue
             malignancies = [a.malignancy for a in anns]
             median_mal = float(statistics.median(malignancies))
@@ -98,16 +109,17 @@ def extract_nodules(max_scans: int | None = None) -> list[dict]:
     return nodules
 
 
-def write_cohort(out_dir: Path, max_scans: int | None = None) -> None:
+def write_cohort(out_dir: Path, max_scans: int | None = None, luna16: bool = False) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
-    nodules = extract_nodules(max_scans=max_scans)
+    prefix = "luna16" if luna16 else "lidc"
+    nodules = extract_nodules(max_scans=max_scans, luna16=luna16)
     nodules = [n for n in nodules if n["DiameterMm"] != ""]
 
     patients = sorted({n["pid"] for n in nodules})
     feature_cols = SEMANTIC_FEATURES + ["DiameterMm"]
     node_fields = ["ID", "NodeType", "Outcome", "Label"] + feature_cols
 
-    with (out_dir / "lidc_nodes.csv").open("w", newline="") as fh:
+    with (out_dir / f"{prefix}_nodes.csv").open("w", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=node_fields)
         w.writeheader()
         for pid in patients:
@@ -118,7 +130,7 @@ def write_cohort(out_dir: Path, max_scans: int | None = None) -> None:
                         "Label": f"d={n['DiameterMm']}mm mal={n['MalignancyMedian']}",
                         **{c: n[c] for c in feature_cols}})
 
-    with (out_dir / "lidc_edges.csv").open("w", newline="") as fh:
+    with (out_dir / f"{prefix}_edges.csv").open("w", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=["SourceID", "TargetID", "Relationship", "Weight"])
         w.writeheader()
         by_patient: dict[str, list[str]] = {}
@@ -132,7 +144,7 @@ def write_cohort(out_dir: Path, max_scans: int | None = None) -> None:
                     w.writerow({"SourceID": siblings[i], "TargetID": siblings[j],
                                 "Relationship": "same_scan", "Weight": 1.0})
 
-    with (out_dir / "lidc_provenance.csv").open("w", newline="") as fh:
+    with (out_dir / f"{prefix}_provenance.csv").open("w", newline="") as fh:
         prov = ["ID", "pid", "tier", "NReaders", "MalignancyMedian", "MalignancySpread",
                 "ReaderMalignancies", "DiameterMm"]
         w = csv.DictWriter(fh, fieldnames=prov)
@@ -145,7 +157,12 @@ def write_cohort(out_dir: Path, max_scans: int | None = None) -> None:
 
     tiers = [n["tier"] for n in nodules]
     spreads = [n["MalignancySpread"] for n in nodules]
-    print(f"\nWrote {len(patients)} scans and {len(nodules)} nodules.")
+    label = "LUNA16-defined subset (reconstructed from LIDC)" if luna16 else "LIDC"
+    print(f"\n[{label}] Wrote {len(patients)} scans and {len(nodules)} nodules "
+          f"to {prefix}_*.csv")
+    if luna16:
+        print("  (LUNA16 published: 888 scans, 1186 nodules; ~1% more here as "
+              "slice-spacing-consistency exclusion is not applied)")
     print("Malignancy tiers:", {t: tiers.count(t) for t in
                                  ("benign_low", "indeterminate", "suspicious_high")})
     print(f"Inter-reader malignancy spread: mean={statistics.mean(spreads):.2f}, "
@@ -153,6 +170,10 @@ def write_cohort(out_dir: Path, max_scans: int | None = None) -> None:
 
 
 if __name__ == "__main__":
-    import sys
-    cap = int(sys.argv[1]) if len(sys.argv) > 1 else None
-    write_cohort(Path(__file__).resolve().parent, max_scans=cap)
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--luna16", action="store_true",
+                    help="Reconstruct the LUNA16 cohort definition (<=2.5mm scans, >=3 readers) from LIDC")
+    ap.add_argument("--max-scans", type=int, default=None)
+    args = ap.parse_args()
+    write_cohort(Path(__file__).resolve().parent, max_scans=args.max_scans, luna16=args.luna16)

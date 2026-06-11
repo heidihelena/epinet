@@ -97,6 +97,25 @@ morphology model and the radiologist gestalt are capturing partly different
 things — a concrete, honest observation about LIDC's label bias that the
 pipeline surfaces rather than masks.
 
+## LUNA16-defined subset (reconstructed from LIDC)
+
+LUNA16 is not an independent dataset — it is a curated subset of LIDC-IDRI (scans
+with slice thickness ≤2.5 mm; nodules accepted by ≥3 of 4 radiologists). Since we
+already have the LIDC annotations via `pylidc`, the LUNA16 cohort *definition* can
+be reconstructed locally (it is a reconstruction, not the LUNA16 download):
+
+```bash
+python examples/build_lidc_cohort.py --luna16   # writes luna16_*.csv
+```
+
+This yields **1192 nodules** — within 0.5% of LUNA16's published 1186 — and, unlike
+LUNA16's released files (which carry only nodule coordinates + diameter for the
+detection challenge), it includes malignancy and the 8 semantic ratings. The same
+pipeline (`--run-clusters`, pathology validation, fusion) runs on `luna16_*.csv`
+unchanged. Requiring ≥3 readers selects more-annotated, more-contested nodules:
+inter-reader malignancy spread rises to mean 1.51 (vs 0.93 in full LIDC), so the
+"indeterminate" hedge tier is even more dominant here.
+
 ## Boundaries
 
 - Still not pathology. The label is a subjective rating; "accuracy" here means
