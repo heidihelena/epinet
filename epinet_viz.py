@@ -280,7 +280,7 @@ def plot_feature_importance(
     fig, ax = plt.subplots(figsize=(7, max(3, 0.4 * len(top))))
     errors = top["importance_std"] if "importance_std" in top.columns else None
     ax.barh(top["feature"], top["importance"], xerr=errors, color=CATEGORY_COLORS[0], capsize=3)
-    ax.set_xlabel("Importance" + (" (mean ± sd across iterations)" if errors is not None else ""))
+    ax.set_xlabel("Importance" + (" (mean ± sd)" if errors is not None else ""))
     ax.set_title("Model feature importance")
     ax.grid(axis="x", alpha=0.3)
     ax.margins(y=0.01)
@@ -288,22 +288,27 @@ def plot_feature_importance(
 
 
 def plot_metric_stability(iteration_metrics: pd.DataFrame, output_path: Path) -> Path:
-    """Box plot of model metrics across evaluation iterations."""
+    """Box plot of model metrics across evaluation iterations.
+
+    Restricted to metrics that share the 0..1 higher-is-better scale (so the box
+    plot is readable); Brier and MCC live on different scales and are reported in
+    the metrics JSON / model card instead.
+    """
     metric_columns = [
         column
-        for column in ["accuracy", "precision_weighted", "recall_weighted", "f1_weighted"]
-        if column in iteration_metrics.columns
+        for column in ["accuracy", "balanced_accuracy", "f1_weighted", "roc_auc"]
+        if column in iteration_metrics.columns and iteration_metrics[column].notna().any()
     ]
     fig, ax = plt.subplots(figsize=(7, 5))
-    data = [iteration_metrics[column] for column in metric_columns]
-    labels = [c.replace("_weighted", "") for c in metric_columns]
+    data = [iteration_metrics[column].dropna() for column in metric_columns]
+    labels = [c.replace("_weighted", "").replace("balanced_accuracy", "bal_acc") for c in metric_columns]
     ax.boxplot(data, medianprops={"color": HIGHLIGHT}, **{_BOXPLOT_LABEL_KW: labels})
     # Overlay individual iterations (jittered) so the spread is shown, not hidden.
     rng = np.random.default_rng(0)
     for i, column in enumerate(metric_columns, start=1):
-        x = rng.normal(i, 0.04, size=len(iteration_metrics))
-        ax.scatter(x, iteration_metrics[column], s=12, color=CATEGORY_COLORS[0],
-                   alpha=0.4, zorder=3)
+        values = iteration_metrics[column].dropna()
+        x = rng.normal(i, 0.04, size=len(values))
+        ax.scatter(x, values, s=12, color=CATEGORY_COLORS[0], alpha=0.4, zorder=3)
     ax.set_ylim(0, 1.05)
     ax.set_ylabel("Score")
     ax.set_title(f"Metric stability across {len(iteration_metrics)} iterations")
@@ -495,6 +500,81 @@ def plot_contestability(
     return _save(fig, output_path)
 
 
+def plot_calibration(
+    y_true: np.ndarray,
+    proba_pos: np.ndarray,
+    output_path: Path,
+    *,
+    pos_label: object = None,
+    brier: float | None = None,
+    n_bins: int = 10,
+) -> Path:
+    """Reliability diagram for a binary risk score (predicted vs observed risk).
+
+    Points on the diagonal are perfectly calibrated; points below mean the model
+    over-estimates risk in that probability band, above means under-estimates.
+    The histogram strip shows where the predicted probabilities actually fall, so
+    sparsely-populated bins are not over-read. A discriminating model can still be
+    badly off this line — which is exactly why calibration is reported.
+    """
+    from sklearn.calibration import calibration_curve
+
+    y = (np.asarray(y_true) == pos_label).astype(int) if pos_label is not None else np.asarray(y_true)
+    n_bins = max(2, min(n_bins, len(np.unique(proba_pos))))
+    fig, (ax, ax_hist) = plt.subplots(
+        2, 1, figsize=(6, 6.4), height_ratios=[4, 1], sharex=True
+    )
+    ax.plot([0, 1], [0, 1], linestyle="--", color="#999999", label="perfect calibration")
+    try:
+        prob_true, prob_pred = calibration_curve(y, proba_pos, n_bins=n_bins, strategy="quantile")
+        ax.plot(prob_pred, prob_true, marker="o", color=HIGHLIGHT,
+                label="model" + (f" (Brier={brier:.3f})" if brier is not None else ""))
+    except ValueError:
+        pass
+    ax.set_ylabel("Observed frequency")
+    ax.set_ylim(-0.02, 1.02)
+    ax.set_title("Calibration (reliability diagram)")
+    ax.legend(loc="upper left")
+    ax.grid(alpha=0.3)
+
+    ax_hist.hist(proba_pos, bins=np.linspace(0, 1, n_bins + 1), color=CATEGORY_COLORS[0], alpha=0.8)
+    ax_hist.set_xlabel("Predicted probability")
+    ax_hist.set_ylabel("Count")
+    ax_hist.set_xlim(-0.02, 1.02)
+    ax_hist.grid(axis="y", alpha=0.3)
+    fig.tight_layout()
+    return _save(fig, output_path)
+
+
+def plot_learning_curve(learning_curve: dict, output_path: Path) -> Path:
+    """Cross-validated F1 vs training-set size, with ±1 sd bands.
+
+    Makes the small-n regime visible: if the validation curve is still climbing
+    at the largest training size, the model is data-starved and more cases would
+    help; if train and validation curves sit far apart, it is over-fitting.
+    """
+    sizes = np.asarray(learning_curve["train_sizes"], dtype=float)
+    train_mean = np.asarray(learning_curve["train_mean"], dtype=float)
+    train_std = np.asarray(learning_curve["train_std"], dtype=float)
+    test_mean = np.asarray(learning_curve["test_mean"], dtype=float)
+    test_std = np.asarray(learning_curve["test_std"], dtype=float)
+
+    fig, ax = plt.subplots(figsize=(7, 5))
+    ax.plot(sizes, train_mean, marker="o", color=CATEGORY_COLORS[1], label="training score")
+    ax.fill_between(sizes, train_mean - train_std, train_mean + train_std,
+                    color=CATEGORY_COLORS[1], alpha=0.15)
+    ax.plot(sizes, test_mean, marker="s", color=CATEGORY_COLORS[0], label="cross-validation score")
+    ax.fill_between(sizes, test_mean - test_std, test_mean + test_std,
+                    color=CATEGORY_COLORS[0], alpha=0.15)
+    ax.set_xlabel("Training examples")
+    ax.set_ylabel("F1 (weighted)")
+    ax.set_ylim(0, 1.05)
+    ax.set_title("Learning curve")
+    ax.legend(loc="best")
+    ax.grid(alpha=0.3)
+    return _save(fig, output_path)
+
+
 def generate_run_plots(
     graph: nx.Graph,
     output_dir: Path,
@@ -506,6 +586,8 @@ def generate_run_plots(
     importance: pd.DataFrame | None = None,
     iteration_metrics: pd.DataFrame | None = None,
     permutation_metrics: pd.DataFrame | None = None,
+    calibration: dict | None = None,
+    learning_curve: dict | None = None,
     clustering: dict | None = None,
     contestability: dict | None = None,
     seed: int = 42,
@@ -562,6 +644,18 @@ def generate_run_plots(
         written.append(
             plot_metric_stability(iteration_metrics, fp("metric_stability"))
         )
+    if calibration is not None and len(calibration.get("proba_pos", [])) > 0:
+        written.append(
+            plot_calibration(
+                calibration["y_true"],
+                calibration["proba_pos"],
+                fp("calibration"),
+                pos_label=calibration.get("pos_label"),
+                brier=calibration.get("brier"),
+            )
+        )
+    if learning_curve is not None:
+        written.append(plot_learning_curve(learning_curve, fp("learning_curve")))
     if (
         permutation_metrics is not None
         and not permutation_metrics.empty

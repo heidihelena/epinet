@@ -23,6 +23,12 @@ reflects real signal rather than leakage or chance.
 ## What Is Implemented
 
 - CSV node and edge loading.
+- **Input normalization** (on by default; `--no-normalize` for strict mode): maps
+  common column aliases (`patient_id`→`ID`, `from`/`to`→`SourceID`/`TargetID`,
+  `label`→`Outcome`, …) onto the canonical schema before validation, so messy
+  real-world CSVs run without hand-editing. Never silent — every rename is logged
+  to `ingest_report.json` and folded into provenance, which hashes both the raw
+  input file and the normalized table.
 - Network construction with NetworkX.
 - Node-level graph features:
   - degree
@@ -35,14 +41,34 @@ reflects real signal rather than leakage or chance.
 - Semi-supervised support: nodes with a blank outcome are treated as unlabeled
   scaffold — they shape the graph features but are excluded from training, so a
   graph can mix labeled and context/infrastructure nodes.
+- **Discrimination and calibration metrics**, not just accuracy: AUROC and
+  average precision (AUPRC), balanced accuracy and Matthews correlation
+  coefficient (robust under class imbalance), plus a Brier score and a
+  calibration slope/intercept — because a risk score that discriminates but is
+  miscalibrated is misleading exactly where decisions are contestable.
 - Iterative model evaluation over repeated train/test splits, reporting the
-  mean, standard deviation, and range of each metric instead of a single noisy split.
+  mean, standard deviation, and range of each metric — labelled honestly as
+  split-to-split *variability*, which understates true uncertainty (Nadeau &
+  Bengio, 2003), and complemented by a **within-split percentile-bootstrap 95%
+  confidence interval** (`--n-bootstrap N`).
+- **Permutation feature importance** measured on held-out data (less biased than
+  impurity importance, which is retained alongside for reference).
 - Community-aware splitting (`--split-strategy community`): whole graph
   communities stay on one side of the split, so scores estimate generalization
   to unseen regions of the network instead of leaking structure between
   connected train/test nodes.
-- Label-permutation null model (`--permutation-test N`) with empirical
-  p-values, so observed scores are compared against chance instead of read in isolation.
+- Label-permutation null model (`--permutation-test N`) with empirical,
+  direction-aware p-values (computed with the *same* multi-iteration averaging as
+  the observed score, and reported with a multiple-comparisons caveat), so
+  observed scores are compared against chance instead of read in isolation.
+- **Reproducibility provenance** stamped into every run (`provenance.json`, and
+  embedded in `model_metrics.json`): git commit + dirty flag, package versions,
+  random seed, and a SHA-256 of each input file.
+- **TRIPOD+AI-flavored model card** (`model_card.md`): a human-readable summary
+  of intended use, data, performance (discrimination *and* calibration),
+  validation, limitations, and provenance.
+- Small-cohort guardrails: tiny test sets and rare classes are surfaced as
+  explicit `data_warnings` rather than left implicit.
 - Shortest-path analysis from source nodes to explicit target nodes or to nodes with a target outcome.
 - Feature-space clustering: k-means centroids plus per-node distance to every
   outcome-class centroid (Euclidean or Mahalanobis) — a nearest-centroid view
@@ -56,7 +82,8 @@ reflects real signal rather than leakage or chance.
   table — showing how many sources reach each target and at what distance.
 - CSV/JSON outputs for downstream inspection.
 - Publication-style PNG figures (`epinet_viz.py`): network overview, degree
-  distribution, feature importance, metric stability, and confusion matrix.
+  distribution, feature importance, metric stability, confusion matrix,
+  calibration reliability diagram, and learning curve.
 
 The older `epinet-analysis.py` and `epinet-analysis-v2.py` scripts remain as early prototypes.
 The recommended entry point is now `epinet_toolkit.py`.
@@ -115,10 +142,15 @@ Generated files include:
 - `shortest_paths.csv`
 - `nearest_targets.csv` — per source: nearest target and best path
 - `target_coverage.csv` — per target: how many sources reach it, min/mean/max distance
-- `model_metrics.json` — primary-split metrics plus an `iteration_summary` block
-- `model_feature_importance.csv` — mean importance across iterations, with `importance_std`
+- `model_metrics.json` — primary-split metrics (discrimination, classification,
+  calibration), `iteration_summary`, bootstrap CI, permutation test, data
+  warnings, and an embedded `provenance` block
+- `model_card.md` — TRIPOD+AI-flavored human-readable model card
+- `model_feature_importance.csv` — permutation importance (`importance` ±
+  `importance_std`) with `impurity_importance` retained for reference
 - `model_iteration_metrics.csv` — one row of metrics per evaluation iteration
-- `model_permutation_metrics.csv` — one row per null-model permutation (with `--permutation-test`)
+- `model_permutation_metrics.csv` — one averaged row per null-model permutation (with `--permutation-test`)
+- `provenance.json` — git commit, package versions, seed, and input SHA-256s
 - `run_summary.json`
 - `plots/*.png` — see Visualization below
 
@@ -191,10 +223,14 @@ Every run writes figures to `<output-dir>/plots/` (disable with `--no-make-plots
 - `network_overview` — spring layout colored by outcome, target nodes outlined,
   nearest source→target paths highlighted
 - `degree_distribution`
-- `feature_importance` — error bars show cross-iteration variability
-- `metric_stability` — box plot of metrics across iterations, with the individual
-  iterations overlaid as jittered points
+- `feature_importance` — permutation importance with ±1 sd error bars
+- `metric_stability` — box plot of the 0–1 metrics (accuracy, balanced accuracy,
+  F1, AUROC) across iterations, with the individual iterations overlaid as
+  jittered points
 - `confusion_matrix` — counts plus row-normalized recall, labeled colorbar
+- `calibration` — reliability diagram (predicted vs observed risk) with a
+  prediction histogram strip, for binary outcomes
+- `learning_curve` — cross-validated F1 vs training-set size, with ±1 sd bands
 - `permutation_null` — null distribution vs observed F1 (with `--permutation-test`)
 - `feature_clusters` — PCA projection with explained-variance axis labels
 - `contestability` — flip-distance histogram with the contested tail shaded, beside

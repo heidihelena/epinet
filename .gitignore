@@ -32,3 +32,5 @@ dist/
 examples/lymphoma_nodes.csv
 examples/lymphoma_edges.csv
 examples/lymphoma_outputs/
+
+.venv/

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "epinet"
-version = "0.1.0"
+version = "0.2.0"
 description = "General node/edge network analysis toolkit: graph features, semi-supervised outcome modeling, shortest paths, and feature-space centroid clustering."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -24,7 +24,7 @@ dependencies = [
 # Example-only datasets and I/O, kept out of the core install.
 lidc = ["pylidc>=0.2.3"]       # LIDC-IDRI / LUNA16 cohort reconstruction
 excel = ["xlrd>=2.0", "openpyxl>=3.0"]  # reading the TCIA diagnosis spreadsheets
-dev = ["pytest>=7.0", "ruff>=0.4"]
+dev = ["pytest>=7.0", "ruff>=0.4", "hypothesis>=6.0"]
 
 [project.scripts]
 epinet = "epinet_toolkit:main"
@@ -34,7 +34,18 @@ Homepage = "https://github.com/heidihelena/epinet"
 
 [tool.setuptools]
 # Flat module layout: the toolkit is a small set of top-level modules.
-py-modules = ["epinet_toolkit", "epinet_cluster", "epinet_viz", "epinet_common"]
+py-modules = [
+    "epinet_toolkit",
+    "epinet_cluster",
+    "epinet_contest",
+    "epinet_viz",
+    "epinet_common",
+    "epinet_report",
+    "epinet_ingest",
+    "epinet_federated",
+    "epinet_registry",
+    "epinet_governance",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

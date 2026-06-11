@@ -43,9 +43,27 @@ def standardize(X: pd.DataFrame) -> tuple[np.ndarray, list[str]]:
 
 
 def _mahalanobis_inverse_cov(Xz: np.ndarray) -> np.ndarray:
-    """Ridge-regularised pseudo-inverse of the covariance of standardized X."""
-    cov = np.cov(Xz, rowvar=False)
-    cov = np.atleast_2d(cov)
+    """Well-conditioned inverse covariance (precision) of standardized X.
+
+    On the small cohorts EpiNet targets, ``n_features`` is often close to
+    ``n_samples`` and the empirical covariance is ill-conditioned or singular —
+    its naive inverse then produces wildly unstable Mahalanobis distances. We use
+    **Ledoit–Wolf shrinkage**, which pulls the covariance toward a scaled
+    identity by a data-driven amount and returns an analytically invertible
+    estimate (its ``precision_`` is the inverse we need). This is the defensible
+    choice in the small-n / correlated-feature regime; we fall back to a
+    ridge-regularised pseudo-inverse only if shrinkage cannot be estimated
+    (e.g. fewer than two samples).
+    """
+    Xz = np.atleast_2d(Xz)
+    if Xz.shape[0] >= 2 and Xz.shape[1] >= 1:
+        try:
+            from sklearn.covariance import LedoitWolf
+
+            return LedoitWolf(assume_centered=False).fit(Xz).precision_
+        except (ValueError, ImportError):
+            pass
+    cov = np.atleast_2d(np.cov(Xz, rowvar=False))
     ridge = 1e-6 * np.eye(cov.shape[0])
     return np.linalg.pinv(cov + ridge)
 
