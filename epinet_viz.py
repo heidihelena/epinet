@@ -80,6 +80,20 @@ def apply_house_style() -> None:
 apply_house_style()
 
 
+def _mpl_at_least(major: int, minor: int) -> bool:
+    """True if the installed matplotlib is at least major.minor."""
+    parts = matplotlib.__version__.split(".")
+    try:
+        return (int(parts[0]), int(parts[1])) >= (major, minor)
+    except (ValueError, IndexError):
+        return True  # unrecognizable (dev/rc) version string: assume modern
+
+
+# ``boxplot`` renamed the ``labels`` keyword to ``tick_labels`` in matplotlib 3.9;
+# the repo supports matplotlib >= 3.3.2, so pick the keyword the runtime accepts.
+_BOXPLOT_LABEL_KW = "tick_labels" if _mpl_at_least(3, 9) else "labels"
+
+
 def _save(fig: plt.Figure, output_path: Path, *, dpi: int | None = None) -> Path:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     # Vector formats ignore dpi; raster honours DEFAULT_DPI unless overridden.
@@ -282,8 +296,8 @@ def plot_metric_stability(iteration_metrics: pd.DataFrame, output_path: Path) ->
     ]
     fig, ax = plt.subplots(figsize=(7, 5))
     data = [iteration_metrics[column] for column in metric_columns]
-    ax.boxplot(data, tick_labels=[c.replace("_weighted", "") for c in metric_columns],
-               medianprops={"color": HIGHLIGHT})
+    labels = [c.replace("_weighted", "") for c in metric_columns]
+    ax.boxplot(data, medianprops={"color": HIGHLIGHT}, **{_BOXPLOT_LABEL_KW: labels})
     # Overlay individual iterations (jittered) so the spread is shown, not hidden.
     rng = np.random.default_rng(0)
     for i, column in enumerate(metric_columns, start=1):
