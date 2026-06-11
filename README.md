@@ -293,6 +293,15 @@ when cancer is suspected), so specificity is unmeasurable from it — every
 reference is a centroid with its own selection topography. See
 `examples/pathology_validation_usecase.md`.
 
+`examples/score_comparison.py` runs a parallel score comparison against tissue
+pathology. Its scope note is the result: the established clinical models (Brock,
+Mayo) and the NTOG research scores **cannot** be computed on LIDC, which lacks
+their demographic/clinical inputs — they are not fabricated. Of the predictors
+LIDC does support, a literature-weighted morphology composite ties the
+established size and radiologist-gestalt benchmarks (AUC ~0.72–0.75, differences
+not significant) — added morphology buys no discrimination over diameter alone
+here. See `examples/score_comparison_usecase.md`.
+
 ## Nordic Lung Cancer Quality-Indicator Example
 
 A larger, real-domain example models lung cancer pathway quality indicators
