@@ -544,10 +544,43 @@ class ToolkitTests(unittest.TestCase):
             features, id_col="CaseID", label_col="Subtype", k=4)
         # Outcome stored under its real column name; graph is connected enough to model.
         self.assertIn("Subtype", nodes.columns)
-        self.assertEqual(set(nodes["Subtype"]), {"DLBCL", "FL", "CLL"})
+        self.assertEqual(set(nodes["Subtype"]), {"DLBCL", "FL", "CLL", "MCL", "BL"})
         self.assertGreater(len(edges), 0)
         ids = set(nodes["ID"])
         self.assertTrue(set(edges["SourceID"]) <= ids and set(edges["TargetID"]) <= ids)
+
+    def test_lymphoma_grey_zone_cases_are_the_contested_ones(self):
+        import build_lymphoma_workflow as blw
+
+        cohort = blw.synthetic_lymphoma_cohort(n_per_class=30, seed=0, grey_zone=12)
+        grey = cohort["CaseID"].str.startswith("GZ_").to_numpy()
+        self.assertEqual(int(grey.sum()), 12)
+
+        X = cohort.set_index("CaseID")[blw._FEATURES]
+        y = cohort.set_index("CaseID")["Subtype"]
+        result = ecn.contestability(X, y=y, metric="mahalanobis", contest_quantile=0.1)
+        frame = result["assignments"].set_index("ID")
+        frame["is_grey"] = grey
+
+        # Grey-zone cases sit on a boundary: much smaller flip-distance than the bulk.
+        self.assertLess(
+            frame.loc[frame["is_grey"], "flip_distance"].mean(),
+            frame.loc[~frame["is_grey"], "flip_distance"].mean(),
+        )
+        grey = frame.loc[frame["is_grey"]]
+        # The lens parks them on the CLL/MCL axis: most are nearest one of the pair.
+        on_axis = grey["nearest_class_centroid"].isin({"CLL", "MCL"}).mean()
+        self.assertGreaterEqual(on_axis, 0.8)
+        # And the marker it most often names to resolve them is cyclin D1 — the
+        # real discriminator (t(11;14) defines MCL vs CLL), learned from features.
+        self.assertEqual(grey["most_decision_relevant_feature"].value_counts().idxmax(), "CyclinD1")
+
+    def test_lymphoma_grey_zone_pair_must_be_known(self):
+        import build_lymphoma_workflow as blw
+
+        with self.assertRaises(ValueError):
+            blw.synthetic_lymphoma_cohort(n_per_class=5, grey_zone=3,
+                                          grey_zone_pair=("CLL", "Hodgkin"))
 
     def test_plot_network_handles_missing_outcome(self):
         graph = et.build_graph(
