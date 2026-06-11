@@ -1,5 +1,5 @@
 ---
-title: "EpiNet: transparent network and feature-space analysis with honest evaluation and federated contestability"
+title: "EpiNet: the Epistemic Network toolkit — transparent network and feature-space analysis with honest evaluation and federated contestability"
 tags:
   - Python
   - network analysis
@@ -20,10 +20,11 @@ bibliography: paper.bib
 
 # Summary
 
-`EpiNet` is a Python toolkit for analysing graph-shaped tabular datasets. From
-node and edge CSVs it computes graph features, evaluates an outcome model, finds
-shortest paths, clusters nodes in feature space, and scores how *contestable*
-each nearest-centroid call is. It is deliberately small and interpretable, and
+`EpiNet` — the *Epistemic Network* toolkit — is a Python package for analysing
+graph-shaped tabular datasets, organised around how well-founded each call is
+rather than the point prediction alone. From node and edge CSVs it computes
+graph features, evaluates an outcome model, finds shortest paths, clusters nodes
+in feature space, and scores how *contestable* each nearest-centroid call is. It is deliberately small and interpretable, and
 its distinguishing feature is that **honest evaluation is the default path**:
 discrimination and calibration metrics, a label-permutation null, bootstrap
 confidence intervals, community-aware splitting, small-cohort warnings, a
