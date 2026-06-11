@@ -509,5 +509,35 @@ class NoduleModelValidationTests(unittest.TestCase):
         self.assertTrue(wc["vdt_quadruple_300d"])
 
 
+class NlstLoaderTests(unittest.TestCase):
+    def test_demo_fixture_assembles_cohort(self):
+        import build_nlst_cohort as bnl
+
+        participant, abnormalities = bnl.demo_fixture(seed=1)
+        frames = bnl.assemble(participant, abnormalities)
+        nodes, edges, prov = frames["nodes"], frames["edges"], frames["provenance"]
+
+        nodules = nodes[nodes["NodeType"] == "Nodule"]
+        self.assertGreater(len(nodules), 0)
+        # Nodules are labeled; participants are unlabeled scaffold.
+        self.assertTrue((nodules["Outcome"] != "").all())
+        self.assertTrue((nodes[nodes["NodeType"] == "Participant"]["Outcome"] == "").all())
+        self.assertEqual(set(nodules["Outcome"]) - {"benign_low", "suspicious_high"}, set())
+        # The demographics that make Brock/Mayo/NTOG computable are carried.
+        for col in ["Age", "PackYears", "CurrentSmoker", "FamilyHistory", "LungCancer"]:
+            self.assertIn(col, prov.columns)
+        # Edges reference only known node IDs.
+        ids = set(nodes["ID"])
+        self.assertTrue(set(edges["SourceID"]) <= ids and set(edges["TargetID"]) <= ids)
+
+    def test_missing_column_raises_actionable_error(self):
+        import build_nlst_cohort as bnl
+
+        participant, abnormalities = bnl.demo_fixture(seed=2)
+        participant = participant.drop(columns=["canclung"])
+        with self.assertRaises(KeyError):
+            bnl.assemble(participant, abnormalities)
+
+
 if __name__ == "__main__":
     unittest.main()

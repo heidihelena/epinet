@@ -20,3 +20,6 @@ confusion_matrix.png
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+examples/nlst_nodes.csv
+examples/nlst_edges.csv
+examples/nlst_provenance.csv
