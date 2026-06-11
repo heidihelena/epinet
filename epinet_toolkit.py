@@ -785,6 +785,32 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         )
         summary["clusters"] = cluster_result["summary"]
 
+    if getattr(args, "run_contest", False):
+        import epinet_contest
+
+        contest_design = build_design_matrix(
+            features,
+            nodes,
+            id_column=args.id_column,
+            outcome_column=args.outcome_column,
+        )
+        y_contest = None
+        if args.outcome_column and args.outcome_column in nodes.columns:
+            y_contest = (
+                nodes.assign(**{args.id_column: nodes[args.id_column].astype(str)})
+                .set_index(args.id_column)[args.outcome_column]
+            )
+        if y_contest is None:
+            raise SystemExit("--run-contest needs an --outcome-column with at least two classes")
+        contest_result = epinet_contest.run_contestability(
+            contest_design,
+            output_dir,
+            y=y_contest,
+            metric=getattr(args, "distance_metric", "euclidean"),
+            contest_quantile=getattr(args, "contest_quantile", 0.1),
+        )
+        summary["contestability"] = contest_result["summary"]
+
     if getattr(args, "make_plots", False):
         import epinet_viz
 
@@ -864,6 +890,18 @@ def build_parser() -> argparse.ArgumentParser:
         "--cluster-labeled-only",
         action="store_true",
         help="Cluster only nodes with a non-blank outcome (skip feature-less scaffold nodes)",
+    )
+    parser.add_argument(
+        "--run-contest",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Contestability/flip-distance lens: smallest feature-space move that flips each node's nearest-centroid class, plus per-feature value-of-information (uses --distance-metric)",
+    )
+    parser.add_argument(
+        "--contest-quantile",
+        type=float,
+        default=0.1,
+        help="Flag the most fragile fraction of nodes by flip-distance (default: lowest decile)",
     )
     parser.add_argument(
         "--make-plots",

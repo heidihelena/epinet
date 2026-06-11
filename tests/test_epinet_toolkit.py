@@ -10,6 +10,7 @@ import pandas as pd
 
 import epinet_cluster as ec
 import epinet_common as ecommon
+import epinet_contest as ecn
 import epinet_toolkit as et
 import epinet_viz as ev
 
@@ -606,6 +607,122 @@ class NlstLoaderTests(unittest.TestCase):
         participant = participant.drop(columns=["canclung"])
         with self.assertRaises(KeyError):
             bnl.assemble(participant, abnormalities)
+
+
+class ContestabilityTests(unittest.TestCase):
+    def test_flip_distance_matches_closed_form_geometry(self):
+        # Two centroids 4 apart on f0. The bisector sits at f0 = 2.
+        centroids = np.array([[0.0, 0.0], [4.0, 0.0]])
+        Xz = np.array(
+            [
+                [0.0, 0.0],  # at centroid 0: half the separation away -> 2.0
+                [1.0, 0.0],  # |2 - 1| = 1.0 from the boundary
+                [2.0, 0.0],  # exactly on the boundary -> 0.0
+            ]
+        )
+        res = ecn.flip_distances(Xz, centroids, metric="euclidean")
+        np.testing.assert_allclose(res["flip_distance"], [2.0, 1.0, 0.0], atol=1e-9)
+        # Class 0 nodes flip toward class 1; both points sit off-boundary toward 0.
+        self.assertEqual(res["nearest"].tolist(), [0, 0, 0])
+        self.assertEqual(res["runner_up"].tolist(), [1, 1, 1])
+
+    def test_value_of_information_picks_the_separating_axis(self):
+        # Centroids differ only on feature index 1 -> that is the decisive axis,
+        # and a single-axis flip along it equals the full flip-distance.
+        centroids = np.array([[0.0, 0.0, 0.0], [0.0, 6.0, 0.0]])
+        Xz = np.array([[0.0, 1.0, 0.0]])
+        res = ecn.flip_distances(Xz, centroids, metric="euclidean")
+        self.assertEqual(res["most_relevant_feature"][0], 1)
+        self.assertAlmostEqual(res["flip_distance"][0], res["single_axis_flip_distance"][0])
+        # The decisive feature carries all the leverage; the inert axes carry none.
+        leverage = res["leverage"][0]
+        self.assertGreater(leverage[1], 0.0)
+        self.assertAlmostEqual(leverage[0], 0.0)
+        self.assertAlmostEqual(leverage[2], 0.0)
+
+    def test_mahalanobis_with_identity_cov_matches_euclidean(self):
+        centroids = np.array([[0.0, 0.0], [4.0, 0.0]])
+        Xz = np.array([[1.0, 0.0], [3.5, 0.0]])
+        euc = ecn.flip_distances(Xz, centroids, metric="euclidean")
+        mah = ecn.flip_distances(Xz, centroids, metric="mahalanobis", inv_cov=np.eye(2))
+        np.testing.assert_allclose(euc["flip_distance"], mah["flip_distance"], atol=1e-9)
+
+    def test_nearest_boundary_binds_not_nearest_centroid(self):
+        # Three classes; the binding flip is to whichever boundary is closest,
+        # which need not be the second-nearest centroid. Check against brute force.
+        centroids = np.array([[0.0, 0.0], [10.0, 0.0], [0.0, 3.0]])
+        Xz = np.array([[1.0, 0.5]])
+        res = ecn.flip_distances(Xz, centroids, metric="euclidean")
+        d = np.linalg.norm(Xz[0][None, :] - centroids, axis=1)
+        a = int(d.argmin())
+        expected = min(
+            (d[k] ** 2 - d[a] ** 2) / (2 * np.linalg.norm(centroids[k] - centroids[a]))
+            for k in range(3)
+            if k != a
+        )
+        self.assertAlmostEqual(res["flip_distance"][0], expected)
+
+    def test_flip_distance_is_never_negative(self):
+        rng = np.random.default_rng(7)
+        centroids = rng.normal(size=(4, 5))
+        Xz = rng.normal(size=(50, 5))
+        res = ecn.flip_distances(Xz, centroids, metric="euclidean")
+        self.assertTrue((res["flip_distance"] >= 0).all())
+
+    def test_contestability_flags_the_fragile_decile_and_carries_caveats(self):
+        # Labeled blobs plus one point parked on the boundary: it must be flagged.
+        X = pd.DataFrame(
+            {"f1": [0.0, 0.1, 0.2, 5.0, 5.1, 5.2, 2.5], "f2": [0.0] * 7},
+            index=[f"n{i}" for i in range(7)],
+        )
+        y = pd.Series(["a", "a", "a", "b", "b", "b", "a"], index=X.index, name="Outcome")
+        result = ecn.contestability(X, y=y, contest_quantile=0.2)
+        frame = result["assignments"].set_index("ID")
+        # The midpoint node has the smallest flip-distance and is flagged contested.
+        self.assertEqual(frame["flip_distance"].idxmin(), "n6")
+        self.assertTrue(bool(frame.loc["n6", "contested"]))
+        summary = result["summary"]
+        self.assertEqual(summary["flip_distance"]["n_contested"], result["assignments"]["contested"].sum())
+        self.assertEqual(len(summary["caveats"]), 2)
+        self.assertIn("measurement error", summary["caveats"][0])
+
+    def test_contestability_scores_blank_scaffold_without_na_error(self):
+        # Scaffold nodes carry a blank outcome; they get scored, but agreement is
+        # only defined for labeled nodes (regression: pd.NA == str raised before).
+        X = pd.DataFrame(
+            {"f1": [0.0, 0.2, 5.0, 5.2, 2.6], "f2": [0.0, 0.1, 5.0, 4.9, 2.5]},
+            index=["a1", "a2", "b1", "b2", "scaffold"],
+        )
+        y = pd.Series(["a", "a", "b", "b", ""], index=X.index, name="Outcome")
+        result = ecn.contestability(X, y=y)
+        frame = result["assignments"].set_index("ID")
+        self.assertTrue(np.isfinite(frame.loc["scaffold", "flip_distance"]))
+        self.assertIsNone(frame.loc["scaffold", "nearest_matches_outcome"])
+        # Labeled nodes still get a real agreement boolean.
+        self.assertIn(frame.loc["a1", "nearest_matches_outcome"], (True, False))
+
+    def test_contestability_requires_two_classes(self):
+        X = pd.DataFrame({"f1": [0.0, 1.0, 2.0]}, index=list("abc"))
+        y = pd.Series(["a", "a", "a"], index=X.index, name="Outcome")
+        with self.assertRaises(ValueError):
+            ecn.contestability(X, y=y)
+
+    def test_cli_run_writes_contestability_outputs(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            out = root / "out"
+            args = ToolkitTests._synthetic_run_args(
+                self, root, out, run_clusters=False, run_contest=True, contest_quantile=0.1,
+            )
+            summary = et.run(args)
+            self.assertIn("contestability", summary)
+            self.assertTrue((out / "node_contestability.csv").exists())
+            self.assertTrue((out / "contest_summary.json").exists())
+            frame = pd.read_csv(out / "node_contestability.csv")
+            for column in ["flip_distance", "runner_up_class", "contested",
+                           "most_decision_relevant_feature"]:
+                self.assertIn(column, frame.columns)
+            self.assertTrue((frame["flip_distance"] >= 0).all())
 
 
 if __name__ == "__main__":

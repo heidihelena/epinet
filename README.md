@@ -47,6 +47,11 @@ reflects real signal rather than leakage or chance.
 - Feature-space clustering: k-means centroids plus per-node distance to every
   outcome-class centroid (Euclidean or Mahalanobis) — a nearest-centroid view
   that complements the topological shortest paths with attribute-space distance.
+- Contestability / flip-distance (`--run-contest`): the closed-form smallest
+  feature-space move that flips a node's nearest-centroid class, the class it
+  would flip to, and a per-feature value-of-information ranking (which single
+  input the call is most sensitive to) — the analytic complement to the
+  divergence/centroid view.
 - Per-target coverage summaries — the counterpart to the per-source nearest-target
   table — showing how many sources reach each target and at what distance.
 - CSV/JSON outputs for downstream inspection.
@@ -435,7 +440,7 @@ dropping the null model and CIs that would expose it.
 That reframes what the toolkit is for in the contested region. The job is not to
 decide the hard cases but to **measure and route** them: label each case with
 *how contestable it is*, *whether that contest is structured or idiosyncratic*,
-and *what additional measurement (if any) would resolve it*. Three existing lenses
+and *what additional measurement (if any) would resolve it*. Four existing lenses
 already compose into that map.
 
 ### 1. Where is the contest, and is it structured? (implemented)
@@ -484,34 +489,53 @@ imputing a fake number. The honest output of a comparison can be "unmeasurable
 here, and here is which missing domain caused it" — a property of the design, not
 a failure of the run.
 
-### Forward direction: flip-distance and value-of-information (design, not yet implemented)
+### 4. How far is the call from flipping? (`--run-contest`)
 
-The natural next lens makes the boundary analytic. For a score `s(x)` and
-threshold `τ`, the decision-relevant quantity is not distance-to-threshold but
-**flip-distance** — the smallest input change that reverses the call:
+`epinet_contest.py` makes the boundary analytic. For the nearest-centroid
+classifier the decision boundary between two classes is a hyperplane, so the
+toolkit's `|s(x) − τ| / ‖∇s(x)‖` has a closed form — the **flip-distance**, the
+smallest move in standardized feature space that reverses the call:
 
 ```
-flip_distance(x) ≈ |s(x) − τ| / ‖∇s(x)‖
+flip_distance(x) = min over competing class k of  (d_k² − d_a²) / (2·‖c_k − c_a‖)
 ```
 
-A case is contestable when its flip-distance is *smaller than the real-world
-measurement error* of its inputs ("this call reverses if the nodule were measured
-0.4 mm differently"). The same gradient `∇s(x)` then points at the single most
-decision-relevant missing measurement — a computable **value-of-information**
-signal: order *that* test, or report that nothing available would move the call.
+where `d_a`/`d_k` are the node's distances to its nearest and a competing class
+centroid. It is exact in both the Euclidean and shared-covariance Mahalanobis
+metrics (in the latter, measured in the whitened space where the boundary is
+again a hyperplane).
 
-Two cautions are load-bearing, not optional:
+```bash
+python epinet_toolkit.py \
+  --nodes examples/nodule_nodes.csv --edges examples/nodule_edges.csv \
+  --outcome-column Outcome --run-contest --distance-metric mahalanobis \
+  --no-run-model --no-run-paths --no-run-clusters --no-make-plots \
+  --output-dir examples/nodule_contest_outputs
+```
+
+`node_contestability.csv` gives, per node: `flip_distance`, the binding
+`runner_up_class` (which class it would flip *to*), a `contested` flag for the
+most fragile fraction (`--contest-quantile`, default lowest decile), and the
+**value-of-information** columns — `most_decision_relevant_feature` and its
+`single_axis_flip_distance`, the single input the call is most sensitive to. On
+the nodule cohort the most-contested cases sit between adjacent risk tiers with
+flip-distances near zero, and the decisive feature is consistently diameter — a
+machine-checkable echo of the score-comparison finding that diameter carries the
+discrimination. `contest_summary.json` adds the cohort-level flip-distance
+distribution and a global feature-leverage ranking.
+
+Two cautions are load-bearing, and are written into the output's `caveats` field
+rather than left to the reader:
 
 - A gradient is only as meaningful as the surface under it. EpiNet's ported scores
   are explicitly unvalidated; flip-distance computed on them measures the
   **fragility of the score**, not the borderline-ness of the patient. Keep those
   two claims separate, or it is confident nonsense.
-- Report flip-distance *relative to input measurement error*, not as an absolute
-  number. A decision that flips only under perturbations larger than your
-  measurement noise is robust; one that flips under smaller perturbations is not.
-
-This direction is documented here so the existing contestability outputs (1–3) are
-read as steps toward it, not as ends in themselves.
+- `flip_distance` is in standardized-feature units. It is contestable in a way
+  that *matters* only when it is *smaller than the real-world measurement error*
+  of the inputs in the same units ("this call reverses if the nodule were measured
+  0.4 SD differently"). The module reports the number; comparing it to measurement
+  error is a domain step it does not take for you.
 
 ## Methodological Boundaries
 
