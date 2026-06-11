@@ -22,10 +22,37 @@ import numpy as np
 import pandas as pd
 from sklearn.base import clone
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score, confusion_matrix, precision_recall_fscore_support
-from sklearn.model_selection import GridSearchCV, GroupShuffleSplit, train_test_split
+from sklearn.inspection import permutation_importance
+from sklearn.metrics import (
+    accuracy_score,
+    average_precision_score,
+    balanced_accuracy_score,
+    brier_score_loss,
+    confusion_matrix,
+    matthews_corrcoef,
+    precision_recall_fscore_support,
+    roc_auc_score,
+)
+from sklearn.model_selection import GridSearchCV, GroupShuffleSplit, learning_curve, train_test_split
+from sklearn.preprocessing import label_binarize
 
 import epinet_common
+
+# Classification metrics where a higher value is better, vs the calibration
+# error (Brier) where lower is better. The split matters for the one-sided
+# permutation p-value (which tail counts as "at least as extreme as observed").
+LABEL_METRICS = (
+    "accuracy",
+    "balanced_accuracy",
+    "mcc",
+    "precision_weighted",
+    "recall_weighted",
+    "f1_weighted",
+)
+HIGHER_IS_BETTER = LABEL_METRICS + ("roc_auc", "average_precision")
+LOWER_IS_BETTER = ("brier",)
+# Every metric reported per evaluation iteration, in display order.
+ALL_METRICS = HIGHER_IS_BETTER + LOWER_IS_BETTER
 
 
 def split_csv_list(value: str | None) -> list[str]:
@@ -218,6 +245,64 @@ def _split_indices(
     return train_idx, test_idx
 
 
+def _probability_metrics(
+    y_true: pd.Series,
+    proba: np.ndarray,
+    classes: np.ndarray,
+) -> dict[str, float | None]:
+    """Discrimination (AUROC, AUPRC) and calibration (Brier) from probabilities.
+
+    Probabilities — not just the hard label — are what a risk score lives or dies
+    on, so we report:
+
+    - **AUROC** / **AUPRC** (average precision): ranking quality, the latter being
+      the honest choice under class imbalance.
+    - **Brier score**: mean squared error of the probabilities, the standard
+      calibration summary (lower is better). For >2 classes we use the multiclass
+      sum-of-squares form over the one-hot outcome.
+
+    Any metric that is undefined on a given split (e.g. a held-out fold that
+    contains a single class) is returned as ``None`` rather than raising, so the
+    iteration loop degrades gracefully on small cohorts.
+    """
+    out: dict[str, float | None] = {"roc_auc": None, "average_precision": None, "brier": None}
+    present = np.unique(y_true)
+    onehot = label_binarize(y_true, classes=classes)
+    if onehot.shape[1] == 1:  # binary: label_binarize emits one column
+        onehot = np.hstack([1 - onehot, onehot])
+
+    # Brier is always computable from probabilities and the one-hot truth.
+    if len(classes) == 2:
+        pos = classes[1]
+        try:
+            out["brier"] = float(brier_score_loss((y_true == pos).astype(int), proba[:, 1]))
+        except ValueError:
+            out["brier"] = None
+    else:
+        out["brier"] = float(np.mean(np.sum((proba - onehot) ** 2, axis=1)))
+
+    # AUROC / AUPRC need at least two classes actually present in y_true.
+    if len(present) < 2:
+        return out
+    try:
+        if len(classes) == 2:
+            score = proba[:, 1]
+            out["roc_auc"] = float(roc_auc_score((y_true == classes[1]).astype(int), score))
+            out["average_precision"] = float(
+                average_precision_score((y_true == classes[1]).astype(int), score)
+            )
+        else:
+            out["roc_auc"] = float(
+                roc_auc_score(y_true, proba, multi_class="ovr", average="weighted", labels=classes)
+            )
+            out["average_precision"] = float(
+                average_precision_score(onehot, proba, average="weighted")
+            )
+    except ValueError:
+        pass
+    return out
+
+
 def _split_and_score(
     X: pd.DataFrame,
     y: pd.Series,
@@ -227,7 +312,7 @@ def _split_and_score(
     random_state: int,
     stratify_ok: bool,
     groups: pd.Series | None = None,
-) -> tuple[RandomForestClassifier, dict[str, object], pd.Series, pd.Series]:
+) -> tuple[RandomForestClassifier, dict[str, object], pd.Series, pd.Series, np.ndarray]:
     train_idx, test_idx = _split_indices(
         X,
         y,
@@ -240,22 +325,115 @@ def _split_and_score(
     y_train, y_test = y.iloc[train_idx], y.iloc[test_idx]
     fitted = clone(model).set_params(random_state=random_state).fit(X_train, y_train)
     predictions = fitted.predict(X_test)
+    proba = fitted.predict_proba(X_test)
     precision, recall, f1, _ = precision_recall_fscore_support(
         y_test,
         predictions,
         average="weighted",
         zero_division=0,
     )
-    metrics = {
+    metrics: dict[str, object] = {
         "random_state": random_state,
         "accuracy": float(accuracy_score(y_test, predictions)),
+        "balanced_accuracy": float(balanced_accuracy_score(y_test, predictions)),
+        # MCC is robust to class imbalance; +1 perfect, 0 chance, -1 inverse.
+        "mcc": float(matthews_corrcoef(y_test, predictions)),
         "precision_weighted": float(precision),
         "recall_weighted": float(recall),
         "f1_weighted": float(f1),
         "train_rows": int(len(X_train)),
         "test_rows": int(len(X_test)),
     }
-    return fitted, metrics, y_test, pd.Series(predictions, index=y_test.index)
+    metrics.update(_probability_metrics(y_test, proba, fitted.classes_))
+    return fitted, metrics, y_test, pd.Series(predictions, index=y_test.index), proba
+
+
+def calibration_slope_intercept(
+    y_true: pd.Series,
+    proba_pos: np.ndarray,
+    pos_label: object,
+) -> dict[str, float | None]:
+    """Calibration slope and intercept for a binary risk score.
+
+    The standard weak-calibration check (Cox): regress the binary outcome on the
+    *logit* of the predicted probability via logistic regression. A perfectly
+    calibrated model gives **slope = 1** and **intercept = 0**. Slope < 1 means
+    the predictions are too extreme (over-confident); a non-zero intercept means
+    a systematic over/under-estimation of risk. Returns ``None`` values when the
+    fit is undefined (single outcome class, or degenerate probabilities).
+    """
+    y = (np.asarray(y_true) == pos_label).astype(int)
+    if len(np.unique(y)) < 2:
+        return {"slope": None, "intercept": None}
+    eps = 1e-12
+    p = np.clip(np.asarray(proba_pos, dtype=float), eps, 1 - eps)
+    logit = np.log(p / (1 - p))
+    if np.allclose(logit, logit[0]):
+        return {"slope": None, "intercept": None}
+    try:
+        from sklearn.linear_model import LogisticRegression
+
+        # C=inf ≈ unpenalized fit (penalty=None is deprecated from sklearn 1.8).
+        lr = LogisticRegression(C=np.inf, solver="lbfgs", max_iter=1000)
+        lr.fit(logit.reshape(-1, 1), y)
+        return {"slope": float(lr.coef_[0][0]), "intercept": float(lr.intercept_[0])}
+    except (ValueError, ImportError):
+        return {"slope": None, "intercept": None}
+
+
+def _bootstrap_ci(
+    y_true: pd.Series,
+    predictions: pd.Series,
+    proba: np.ndarray,
+    classes: np.ndarray,
+    *,
+    n_boot: int,
+    random_state: int,
+    alpha: float = 0.05,
+) -> dict[str, dict[str, float]]:
+    """Percentile bootstrap confidence intervals for the primary-split metrics.
+
+    Repeated random re-splits expose *split-to-split* variability but their
+    spread is not a valid confidence interval (the splits overlap, so it
+    understates uncertainty — Nadeau & Bengio, 2003). This instead resamples the
+    held-out test set with replacement and recomputes the metrics, giving a
+    genuine within-split interval for a fixed model. Reported alongside, the two
+    answer different questions: "how much does the score move if I re-split?" vs
+    "how precisely is this split's score estimated?".
+    """
+    y_arr = np.asarray(y_true)
+    pred_arr = np.asarray(predictions)
+    n = len(y_arr)
+    rng = np.random.default_rng(random_state)
+    keys = ["accuracy", "balanced_accuracy", "mcc", "f1_weighted", "roc_auc", "brier"]
+    samples: dict[str, list[float]] = {k: [] for k in keys}
+    for _ in range(n_boot):
+        idx = rng.integers(0, n, size=n)
+        yt = pd.Series(y_arr[idx])
+        pr = pd.Series(pred_arr[idx])
+        pb = proba[idx]
+        if len(np.unique(yt)) < 2:
+            continue  # degenerate resample: skip rather than emit a NaN metric
+        samples["accuracy"].append(float(accuracy_score(yt, pr)))
+        samples["balanced_accuracy"].append(float(balanced_accuracy_score(yt, pr)))
+        samples["mcc"].append(float(matthews_corrcoef(yt, pr)))
+        samples["f1_weighted"].append(
+            float(precision_recall_fscore_support(yt, pr, average="weighted", zero_division=0)[2])
+        )
+        prob = _probability_metrics(yt, pb, classes)
+        if prob["roc_auc"] is not None:
+            samples["roc_auc"].append(prob["roc_auc"])
+        if prob["brier"] is not None:
+            samples["brier"].append(prob["brier"])
+    out: dict[str, dict[str, float]] = {}
+    lo_q, hi_q = 100 * (alpha / 2), 100 * (1 - alpha / 2)
+    for key, values in samples.items():
+        if values:
+            out[key] = {
+                "lower": float(np.percentile(values, lo_q)),
+                "upper": float(np.percentile(values, hi_q)),
+            }
+    return out
 
 
 def train_outcome_model(
@@ -270,6 +448,8 @@ def train_outcome_model(
     n_iterations: int = 1,
     groups: pd.Series | None = None,
     n_permutations: int = 0,
+    n_bootstrap: int = 1000,
+    provenance: dict[str, object] | None = None,
 ) -> dict[str, object]:
     """Fit and evaluate the outcome model, optionally over repeated splits.
 
@@ -296,9 +476,21 @@ def train_outcome_model(
     mean. If the observed metrics sit inside the null distribution, the
     features carry no detectable signal for the outcome.
 
+    Beyond the weighted classification metrics, every split reports
+    discrimination (AUROC, average precision) and calibration (Brier score, plus
+    a calibration slope/intercept on the primary split for binary outcomes), and
+    a percentile-bootstrap confidence interval is computed on the primary split
+    (``n_bootstrap``; 0 disables). Feature importance is **permutation
+    importance** measured on the held-out test set — less biased than impurity
+    importance, which is kept alongside as ``impurity_importance`` for reference.
+    Small-cohort risks (tiny test sets, rare classes) are surfaced as
+    ``data_warnings`` rather than left implicit, and a ``provenance`` block (when
+    supplied) is embedded so the metrics file is self-describing.
+
     Returns a dict with keys ``metrics`` (JSON-serializable summary),
-    ``importance``, ``iteration_metrics``, and ``permutation_metrics``
-    (DataFrames; the last is None unless permutations were requested).
+    ``importance``, ``iteration_metrics``, ``permutation_metrics``,
+    ``calibration`` (held-out probabilities for the reliability diagram, or
+    None), and ``learning_curve`` (or None).
     """
     if outcome_column not in nodes.columns:
         raise ValueError(f"Outcome column not found: {outcome_column}")
@@ -370,12 +562,13 @@ def train_outcome_model(
 
     # Iterative evaluation: re-split and re-fit with the tuned configuration.
     iteration_rows: list[dict[str, object]] = []
-    importance_runs: list[np.ndarray] = []
+    impurity_runs: list[np.ndarray] = []
     primary_fit: RandomForestClassifier | None = None
     primary_truth: pd.Series | None = None
     primary_predictions: pd.Series | None = None
+    primary_proba: np.ndarray | None = None
     for i in range(n_iterations):
-        fitted, row, truth, predictions = _split_and_score(
+        fitted, row, truth, predictions, proba = _split_and_score(
             X,
             y,
             tuned_model,
@@ -386,17 +579,29 @@ def train_outcome_model(
         )
         row["iteration"] = i
         iteration_rows.append(row)
-        importance_runs.append(fitted.feature_importances_)
+        impurity_runs.append(fitted.feature_importances_)
         if i == 0:
             primary_fit = fitted
             primary_truth = truth
             primary_predictions = predictions
+            primary_proba = proba
 
     iteration_metrics = pd.DataFrame(iteration_rows)
-    metric_columns = ["accuracy", "precision_weighted", "recall_weighted", "f1_weighted"]
-    metrics: dict[str, object] = {
-        column: float(iteration_metrics[column].iloc[0]) for column in metric_columns
-    }
+    classes = primary_fit.classes_
+    is_binary = len(classes) == 2
+
+    # Metrics actually computable on this run (probability metrics drop out on
+    # degenerate splits, so only report what was measured).
+    present_metrics = [
+        m for m in ALL_METRICS
+        if m in iteration_metrics.columns and iteration_metrics[m].notna().any()
+    ]
+
+    def _first(column: str) -> float | None:
+        value = iteration_metrics[column].iloc[0]
+        return float(value) if pd.notna(value) else None
+
+    metrics: dict[str, object] = {column: _first(column) for column in present_metrics}
     metrics.update(
         {
             "best_params": best_params,
@@ -404,14 +609,15 @@ def train_outcome_model(
             "split_strategy": "community" if groups is not None else "random",
             "labeled_rows": int(len(y)),
             "unlabeled_excluded": n_unlabeled,
+            "n_classes": int(len(classes)),
             "train_rows": int(iteration_metrics["train_rows"].iloc[0]),
             "test_rows": int(iteration_metrics["test_rows"].iloc[0]),
-            "classes": [str(c) for c in primary_fit.classes_],
+            "classes": [str(c) for c in classes],
             # Fix labels to the full class set so the matrix is always
             # n_classes x n_classes and aligns with "classes" above (a held-out
             # split can otherwise omit a class and produce a smaller matrix).
             "confusion_matrix": confusion_matrix(
-                primary_truth, primary_predictions, labels=primary_fit.classes_
+                primary_truth, primary_predictions, labels=classes
             ).tolist(),
         }
     )
@@ -419,6 +625,7 @@ def train_outcome_model(
         metrics["n_groups"] = int(groups.nunique())
     if split_note:
         metrics["split_note"] = split_note
+
     if n_iterations > 1:
         metrics["iteration_summary"] = {
             column: {
@@ -427,56 +634,166 @@ def train_outcome_model(
                 "min": float(iteration_metrics[column].min()),
                 "max": float(iteration_metrics[column].max()),
             }
-            for column in metric_columns
+            for column in present_metrics
+        }
+        metrics["iteration_summary_note"] = (
+            "std/min/max describe variability across overlapping random re-splits, "
+            "not an independent-sample confidence interval; because the splits share "
+            "data they tend to UNDERestimate true uncertainty (Nadeau & Bengio, 2003). "
+            "See primary_split_bootstrap_ci for a within-split interval."
+        )
+
+    # Calibration (binary): Brier on the primary split plus the calibration
+    # slope/intercept. A discriminating-but-miscalibrated risk score is
+    # misleading exactly where decisions are contestable.
+    calibration_payload: dict[str, object] | None = None
+    if is_binary and primary_proba is not None:
+        pos_label = classes[1]
+        cal = calibration_slope_intercept(primary_truth, primary_proba[:, 1], pos_label)
+        metrics["calibration"] = {
+            "brier": _first("brier"),
+            "slope": cal["slope"],
+            "intercept": cal["intercept"],
+            "positive_class": str(pos_label),
+            "note": "Perfect calibration: slope 1, intercept 0. Slope < 1 = over-confident.",
+        }
+        calibration_payload = {
+            "y_true": np.asarray(primary_truth),
+            "proba_pos": primary_proba[:, 1],
+            "pos_label": pos_label,
+            "brier": _first("brier"),
         }
 
-    importance_array = np.vstack(importance_runs)
-    importance = pd.DataFrame(
-        {
-            "feature": X.columns,
-            "importance": importance_array.mean(axis=0),
-        }
+    # Within-split uncertainty: percentile bootstrap on the primary held-out set.
+    if n_bootstrap > 0 and primary_proba is not None:
+        ci = _bootstrap_ci(
+            primary_truth, primary_predictions, primary_proba, classes,
+            n_boot=n_bootstrap, random_state=random_state,
+        )
+        if ci:
+            metrics["primary_split_bootstrap_ci"] = {
+                "n_bootstrap": n_bootstrap,
+                "level": "95%",
+                "metrics": ci,
+            }
+
+    # Small-cohort guardrails: surface the risks rather than print a confident
+    # number on data too thin to support it.
+    warnings_list: list[str] = []
+    primary_test_rows = int(iteration_metrics["test_rows"].iloc[0])
+    min_class = int(class_counts.min())
+    if len(y) < 50:
+        warnings_list.append(f"Small cohort: {len(y)} labeled nodes (<50); metrics are high-variance.")
+    if primary_test_rows < 20:
+        warnings_list.append(f"Small test set: {primary_test_rows} held-out rows (<20) per split.")
+    if min_class < 10:
+        warnings_list.append(f"Rare class: smallest outcome class has {min_class} nodes (<10).")
+    if warnings_list:
+        metrics["data_warnings"] = warnings_list
+
+    # Feature importance: permutation importance on the held-out primary test set
+    # (less biased than impurity, and computed on data the model did not train
+    # on). Impurity importance is retained for reference.
+    _, primary_test_idx = _split_indices(
+        X, y, test_size=test_size, random_state=random_state,
+        stratify_ok=stratify_ok, groups=groups,
     )
-    if n_iterations > 1:
-        importance["importance_std"] = importance_array.std(axis=0, ddof=1)
+    X_test_primary = X.iloc[primary_test_idx]
+    impurity_mean = np.vstack(impurity_runs).mean(axis=0)
+    importance = pd.DataFrame({"feature": X.columns, "impurity_importance": impurity_mean})
+    importance_kind = "permutation"
+    try:
+        perm = permutation_importance(
+            primary_fit, X_test_primary, primary_truth,
+            n_repeats=10, random_state=random_state, n_jobs=1, scoring="f1_weighted",
+        )
+        importance["importance"] = perm.importances_mean
+        importance["importance_std"] = perm.importances_std
+    except (ValueError, RuntimeError):
+        # Fallback: impurity importance with cross-iteration spread.
+        importance_kind = "impurity"
+        importance["importance"] = impurity_mean
+        importance["importance_std"] = np.vstack(impurity_runs).std(axis=0, ddof=1) \
+            if n_iterations > 1 else 0.0
     importance = importance.sort_values("importance", ascending=False)
+    metrics["importance_kind"] = importance_kind
 
-    # Permutation null model: shuffle the outcome and re-evaluate with the
-    # same tuned configuration and split scheme.
+    # Permutation null model. Each permutation is evaluated with the SAME
+    # multi-iteration averaging as the observed score, so the null and the
+    # statistic it is compared against have matching shape (fixing an earlier
+    # single-split-null vs multi-split-mean mismatch).
     permutation_metrics: pd.DataFrame | None = None
     if n_permutations > 0:
         rng = np.random.default_rng(random_state)
         permutation_rows: list[dict[str, object]] = []
-        for i in range(n_permutations):
+        for p in range(n_permutations):
             y_permuted = pd.Series(rng.permutation(y.to_numpy()), index=y.index, name=y.name)
-            _, row, _, _ = _split_and_score(
-                X,
-                y_permuted,
-                tuned_model,
-                test_size=test_size,
-                random_state=random_state + i,
-                stratify_ok=stratify_ok,
-                groups=groups,
-            )
-            row["permutation"] = i
-            permutation_rows.append(row)
+            inner: list[dict[str, object]] = []
+            for j in range(n_iterations):
+                _, row, _, _, _ = _split_and_score(
+                    X, y_permuted, tuned_model, test_size=test_size,
+                    random_state=random_state + j, stratify_ok=stratify_ok, groups=groups,
+                )
+                inner.append(row)
+            inner_df = pd.DataFrame(inner)
+            mean_row = {
+                m: float(inner_df[m].mean()) for m in present_metrics if m in inner_df.columns
+            }
+            mean_row["permutation"] = p
+            permutation_rows.append(mean_row)
         permutation_metrics = pd.DataFrame(permutation_rows)
+
+        perm_block: dict[str, object] = {}
+        for column in present_metrics:
+            if column not in permutation_metrics.columns:
+                continue
+            observed = float(iteration_metrics[column].mean())
+            null_values = permutation_metrics[column].dropna()
+            if null_values.empty:
+                continue
+            if column in LOWER_IS_BETTER:  # Brier: extreme = at or below observed
+                extreme = int((null_values <= observed).sum())
+            else:
+                extreme = int((null_values >= observed).sum())
+            perm_block[column] = {
+                "observed_mean": observed,
+                "null_mean": float(null_values.mean()),
+                "null_std": float(null_values.std(ddof=1)) if len(null_values) > 1 else 0.0,
+                "p_value": float((1 + extreme) / (n_permutations + 1)),
+            }
         metrics["permutation_test"] = {
             "n_permutations": n_permutations,
-            "metrics": {
-                column: {
-                    "observed_mean": float(iteration_metrics[column].mean()),
-                    "null_mean": float(permutation_metrics[column].mean()),
-                    "null_std": float(permutation_metrics[column].std(ddof=1)),
-                    # Empirical one-sided p-value with add-one smoothing.
-                    "p_value": float(
-                        (1 + int((permutation_metrics[column] >= iteration_metrics[column].mean()).sum()))
-                        / (n_permutations + 1)
-                    ),
-                }
-                for column in metric_columns
-            },
+            "metrics": perm_block,
+            "multiplicity_note": (
+                f"{len(perm_block)} metrics tested simultaneously; p-values are NOT "
+                "corrected for multiple comparisons — read them jointly, not as "
+                "independent significance tests."
+            ),
         }
+
+    # Learning curve: cross-validated score vs training-set size, to make the
+    # small-n regime visible (is the curve still climbing at full size?).
+    learning_curve_payload: dict[str, object] | None = None
+    if cv >= 2 and len(y) >= 10:
+        try:
+            sizes, train_scores, test_scores = learning_curve(
+                clone(tuned_model), X, y,
+                cv=cv, scoring="f1_weighted",
+                train_sizes=np.linspace(0.2, 1.0, 5), n_jobs=1,
+                random_state=random_state,
+            )
+            learning_curve_payload = {
+                "train_sizes": sizes.tolist(),
+                "train_mean": train_scores.mean(axis=1).tolist(),
+                "train_std": train_scores.std(axis=1).tolist(),
+                "test_mean": test_scores.mean(axis=1).tolist(),
+                "test_std": test_scores.std(axis=1).tolist(),
+            }
+        except (ValueError, RuntimeError):
+            learning_curve_payload = None
+
+    if provenance is not None:
+        metrics["provenance"] = provenance
 
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "model_metrics.json").write_text(json.dumps(metrics, indent=2) + "\n")
@@ -491,6 +808,8 @@ def train_outcome_model(
         "importance": importance,
         "iteration_metrics": iteration_metrics,
         "permutation_metrics": permutation_metrics,
+        "calibration": calibration_payload,
+        "learning_curve": learning_curve_payload,
     }
 
 
@@ -701,7 +1020,12 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    summary = {"validation": validation, "graph": graph_summary(graph)}
+    # Provenance: stamp the exact inputs, code, and environment so every output
+    # below traces back to a reproducible context.
+    prov = epinet_common.provenance([args.nodes, args.edges], seed=args.random_state)
+    (output_dir / "provenance.json").write_text(json.dumps(prov, indent=2) + "\n")
+
+    summary = {"provenance": prov, "validation": validation, "graph": graph_summary(graph)}
     (output_dir / "graph_summary.json").write_text(json.dumps(summary, indent=2) + "\n")
 
     features = generate_graph_features(graph, include_centrality=args.include_centrality)
@@ -755,8 +1079,18 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             n_iterations=getattr(args, "n_iterations", 1),
             groups=groups,
             n_permutations=getattr(args, "permutation_test", 0),
+            n_bootstrap=getattr(args, "n_bootstrap", 1000),
+            provenance=prov,
         )
         summary["model"] = model_result["metrics"]
+
+        # TRIPOD+AI-flavored model card: the human-readable companion to the
+        # metrics JSON (intended use, performance, calibration, limitations).
+        import epinet_report
+
+        (output_dir / "model_card.md").write_text(
+            epinet_report.model_card(model_result["metrics"]) + "\n"
+        )
 
     cluster_result: dict[str, object] | None = None
     if getattr(args, "run_clusters", False):
@@ -827,6 +1161,8 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             importance=model_result["importance"] if model_result else None,
             iteration_metrics=model_result["iteration_metrics"] if model_result else None,
             permutation_metrics=model_result["permutation_metrics"] if model_result else None,
+            calibration=model_result["calibration"] if model_result else None,
+            learning_curve=model_result["learning_curve"] if model_result else None,
             clustering=cluster_result,
             contestability=contest_result,
             seed=args.random_state,
@@ -956,6 +1292,16 @@ def build_parser() -> argparse.ArgumentParser:
             "Run N label-permutation null evaluations and report an empirical "
             "p-value per metric; if observed scores sit inside the null "
             "distribution, the features carry no detectable outcome signal"
+        ),
+    )
+    parser.add_argument(
+        "--n-bootstrap",
+        type=int,
+        default=1000,
+        metavar="N",
+        help=(
+            "Percentile-bootstrap resamples of the held-out test set for a "
+            "within-split 95%% confidence interval on the primary metrics; 0 disables"
         ),
     )
     parser.add_argument("--test-size", type=float, default=0.2)

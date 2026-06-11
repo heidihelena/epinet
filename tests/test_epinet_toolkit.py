@@ -305,6 +305,10 @@ class ToolkitTests(unittest.TestCase):
                 "feature_importance.png",
                 "confusion_matrix.png",
                 "metric_stability.png",
+                # Binary outcome -> calibration reliability diagram; learning
+                # curve is produced whenever cross-validation is feasible.
+                "calibration.png",
+                "learning_curve.png",
             }
             written = {Path(p).name for p in summary["plots"]}
             self.assertEqual(written, expected)
@@ -800,6 +804,216 @@ class ContestabilityTests(unittest.TestCase):
                            "most_decision_relevant_feature"]:
                 self.assertIn(column, frame.columns)
             self.assertTrue((frame["flip_distance"] >= 0).all())
+
+
+class ScientificStandardsTests(unittest.TestCase):
+    """Discrimination + calibration metrics, honest uncertainty, provenance,
+    permutation importance, shrinkage, learning curves, and the model card."""
+
+    def _binary_cohort(self, n=40, seed=0):
+        # A binary outcome with real-but-imperfect signal in `Value`, on a chain
+        # graph so graph features are well-defined.
+        rng = np.random.default_rng(seed)
+        rows = [
+            {"ID": f"N{i}", "Outcome": i % 2, "Value": float(rng.normal((i % 2) * 2.0, 1.0))}
+            for i in range(n)
+        ]
+        nodes = pd.DataFrame(rows)
+        edges = pd.DataFrame([{"SourceID": f"N{i}", "TargetID": f"N{i + 1}"} for i in range(n - 1)])
+        graph = et.build_graph(nodes, edges)
+        return nodes, et.generate_graph_features(graph)
+
+    def test_discrimination_and_calibration_metrics_reported(self):
+        nodes, features = self._binary_cohort()
+        with tempfile.TemporaryDirectory() as td:
+            result = et.train_outcome_model(
+                nodes, features, id_column="ID", outcome_column="Outcome",
+                output_dir=Path(td), n_iterations=3, n_bootstrap=200,
+            )
+            m = result["metrics"]
+            for key in ["roc_auc", "average_precision", "balanced_accuracy", "mcc", "brier"]:
+                self.assertIn(key, m)
+                self.assertIsNotNone(m[key])
+            self.assertIn("calibration", m)
+            self.assertEqual(m["calibration"]["positive_class"], "1")
+            # Importance is permutation-based, with impurity retained for reference.
+            self.assertEqual(m["importance_kind"], "permutation")
+            self.assertIn("impurity_importance", result["importance"].columns)
+            self.assertIn("importance_std", result["importance"].columns)
+            # The reliability-diagram payload is returned for one held-out split.
+            self.assertIsNotNone(result["calibration"])
+            self.assertEqual(len(result["calibration"]["proba_pos"]), m["test_rows"])
+
+    def test_bootstrap_ci_is_within_split_interval(self):
+        nodes, features = self._binary_cohort()
+        with tempfile.TemporaryDirectory() as td:
+            result = et.train_outcome_model(
+                nodes, features, id_column="ID", outcome_column="Outcome",
+                output_dir=Path(td), n_iterations=1, n_bootstrap=300,
+            )
+            ci = result["metrics"]["primary_split_bootstrap_ci"]
+            self.assertEqual(ci["n_bootstrap"], 300)
+            acc = ci["metrics"]["accuracy"]
+            self.assertLessEqual(acc["lower"], acc["upper"])
+
+    def test_iteration_summary_carries_uncertainty_caveat(self):
+        nodes, features = self._binary_cohort()
+        with tempfile.TemporaryDirectory() as td:
+            result = et.train_outcome_model(
+                nodes, features, id_column="ID", outcome_column="Outcome",
+                output_dir=Path(td), n_iterations=3, n_bootstrap=0,
+            )
+            m = result["metrics"]
+            self.assertIn("iteration_summary_note", m)
+            self.assertIn("Nadeau", m["iteration_summary_note"])
+            # n_bootstrap=0 disables the within-split CI.
+            self.assertNotIn("primary_split_bootstrap_ci", m)
+
+    def test_permutation_test_is_direction_aware_and_averaged(self):
+        nodes, features = self._binary_cohort()
+        with tempfile.TemporaryDirectory() as td:
+            result = et.train_outcome_model(
+                nodes, features, id_column="ID", outcome_column="Outcome",
+                output_dir=Path(td), n_iterations=2, n_permutations=8, n_bootstrap=0,
+            )
+            perm = result["metrics"]["permutation_test"]
+            self.assertEqual(perm["n_permutations"], 8)
+            self.assertIn("multiplicity_note", perm)
+            # One averaged row per permutation (not one per inner split).
+            self.assertEqual(len(result["permutation_metrics"]), 8)
+            for entry in perm["metrics"].values():
+                self.assertGreater(entry["p_value"], 0.0)
+                self.assertLessEqual(entry["p_value"], 1.0)
+            # Brier (lower-is-better) is in the null comparison via its own tail.
+            self.assertIn("brier", perm["metrics"])
+
+    def test_small_cohort_emits_data_warnings(self):
+        nodes, features = self._binary_cohort(n=12, seed=2)
+        with tempfile.TemporaryDirectory() as td:
+            result = et.train_outcome_model(
+                nodes, features, id_column="ID", outcome_column="Outcome",
+                output_dir=Path(td), n_iterations=1, n_bootstrap=0,
+            )
+            warnings = result["metrics"].get("data_warnings", [])
+            self.assertTrue(any("Small cohort" in w for w in warnings))
+
+    def test_provenance_is_captured(self):
+        prov = ecommon.provenance([], seed=7)
+        self.assertEqual(prov["random_seed"], 7)
+        for key in ["epinet_version", "git", "python_version", "packages", "created_utc"]:
+            self.assertIn(key, prov)
+        self.assertIn("scikit-learn", prov["packages"])
+
+    def test_sha256_file_is_deterministic_and_stamped(self):
+        with tempfile.TemporaryDirectory() as td:
+            p = Path(td) / "data.csv"
+            p.write_text("a,b\n1,2\n")
+            h1, h2 = ecommon.sha256_file(p), ecommon.sha256_file(p)
+            self.assertEqual(h1, h2)
+            self.assertEqual(len(h1), 64)
+            prov = ecommon.provenance([p], seed=1)
+            self.assertEqual(prov["input_sha256"][str(p)], h1)
+
+    def test_run_writes_provenance_and_model_card(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            out = root / "out"
+            args = ToolkitTests._synthetic_run_args(self, root, out, n_iterations=2)
+            summary = et.run(args)
+            self.assertIn("provenance", summary)
+            self.assertTrue((out / "provenance.json").exists())
+            self.assertTrue((out / "model_card.md").exists())
+            card = (out / "model_card.md").read_text()
+            for section in ["# Model card", "## Intended use", "## Performance",
+                            "Calibration", "## Validation", "## Provenance"]:
+                self.assertIn(section, card)
+
+    def test_ledoit_wolf_precision_is_well_conditioned(self):
+        # Near-collinear features make the naive covariance ill-conditioned;
+        # shrinkage must still return a finite, symmetric precision matrix.
+        rng = np.random.default_rng(0)
+        base = rng.normal(size=(8, 1))
+        Xz = np.hstack([base, base + 1e-6 * rng.normal(size=(8, 1)), rng.normal(size=(8, 1))])
+        prec = ec._mahalanobis_inverse_cov(Xz)
+        self.assertEqual(prec.shape, (3, 3))
+        self.assertTrue(np.all(np.isfinite(prec)))
+        np.testing.assert_allclose(prec, prec.T, atol=1e-8)
+
+    def test_learning_curve_payload_present(self):
+        nodes, features = self._binary_cohort(n=40)
+        with tempfile.TemporaryDirectory() as td:
+            result = et.train_outcome_model(
+                nodes, features, id_column="ID", outcome_column="Outcome",
+                output_dir=Path(td), n_iterations=1, n_bootstrap=0,
+            )
+            lc = result["learning_curve"]
+            self.assertIsNotNone(lc)
+            self.assertEqual(len(lc["train_sizes"]), len(lc["test_mean"]))
+
+    def test_calibration_slope_intercept_handles_degenerate(self):
+        # Single outcome class -> slope/intercept undefined (None), no crash.
+        res = et.calibration_slope_intercept(pd.Series([1, 1, 1]), np.array([0.2, 0.6, 0.8]), 1)
+        self.assertIsNone(res["slope"])
+        # Two classes with separating probabilities -> a finite slope.
+        res2 = et.calibration_slope_intercept(
+            pd.Series([0, 0, 1, 1]), np.array([0.1, 0.3, 0.7, 0.9]), 1)
+        self.assertIsNotNone(res2["slope"])
+
+    def test_calibration_and_learning_curve_plots_render(self):
+        with tempfile.TemporaryDirectory() as td:
+            out = Path(td)
+            ev.plot_calibration(
+                np.array([0, 0, 1, 1, 0, 1]),
+                np.array([0.1, 0.3, 0.7, 0.9, 0.2, 0.8]),
+                out / "cal.png", pos_label=1, brier=0.1,
+            )
+            ev.plot_learning_curve(
+                {"train_sizes": [4, 8, 12], "train_mean": [0.9, 0.92, 0.95],
+                 "train_std": [0.02, 0.02, 0.01], "test_mean": [0.6, 0.7, 0.75],
+                 "test_std": [0.05, 0.04, 0.03]},
+                out / "lc.png",
+            )
+            self.assertGreater((out / "cal.png").stat().st_size, 0)
+            self.assertGreater((out / "lc.png").stat().st_size, 0)
+
+
+try:
+    from hypothesis import given, settings
+    from hypothesis import strategies as st
+    from hypothesis.extra import numpy as hnp
+
+    _HAS_HYPOTHESIS = True
+except ImportError:
+    _HAS_HYPOTHESIS = False
+
+if _HAS_HYPOTHESIS:
+    _finite = st.floats(min_value=-1e3, max_value=1e3, allow_nan=False, allow_infinity=False)
+
+    class FlipDistancePropertyTests(unittest.TestCase):
+        """Property-based invariants for the closed-form flip-distance."""
+
+        @settings(max_examples=50, deadline=None)
+        @given(
+            hnp.arrays(np.float64, (3, 2), elements=_finite),
+            hnp.arrays(np.float64, (6, 2), elements=_finite),
+        )
+        def test_flip_distance_is_never_negative(self, centroids, Xz):
+            res = ecn.flip_distances(Xz, centroids, metric="euclidean")
+            self.assertTrue(np.all(res["flip_distance"] >= -1e-9))
+
+        @settings(max_examples=50, deadline=None)
+        @given(
+            hnp.arrays(np.float64, (3, 3), elements=_finite),
+            hnp.arrays(np.float64, (5, 3), elements=_finite),
+        )
+        def test_single_axis_flip_at_least_full_flip_distance(self, centroids, Xz):
+            # Moving one feature can never settle a call more cheaply than the
+            # unconstrained shortest move to the boundary.
+            res = ecn.flip_distances(Xz, centroids, metric="euclidean")
+            finite = np.isfinite(res["single_axis_flip_distance"]) & np.isfinite(res["flip_distance"])
+            self.assertTrue(
+                np.all(res["single_axis_flip_distance"][finite] >= res["flip_distance"][finite] - 1e-6)
+            )
 
 
 if __name__ == "__main__":
