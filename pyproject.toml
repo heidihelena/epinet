@@ -43,6 +43,7 @@ py-modules = [
     "epinet_report",
     "epinet_ingest",
     "epinet_federated",
+    "epinet_registry",
 ]
 
 [tool.pytest.ini_options]

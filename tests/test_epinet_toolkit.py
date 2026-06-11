@@ -1144,6 +1144,80 @@ class FederatedContestabilityTests(unittest.TestCase):
         self.assertLess(diff, 1e-6)
 
 
+class RegistryAdapterTests(unittest.TestCase):
+    """Flat registry export -> canonical EpiNet schema (epinet_registry)."""
+
+    def _table(self, n=12):
+        return pd.DataFrame({
+            "case_id": [f"C{i}" for i in range(n)],
+            "age": list(range(40, 40 + n)),
+            "stage": [1, 2, 3, 4] * (n // 4),
+            "site": (["North", "South"] * (n // 2)),  # non-numeric
+            "status": (["alive", "deceased"] * (n // 2)),
+        })
+
+    def test_adapts_flat_table_to_canonical_schema(self):
+        import epinet_registry as ereg
+
+        profile = ereg.RegistryProfile(id_column="case_id", outcome_column="status")
+        result = ereg.adapt(self._table(), profile)
+        nodes, edges, manifest = result["nodes"], result["edges"], result["manifest"]
+        self.assertEqual(list(nodes.columns[:2]), ["ID", "Outcome"])
+        self.assertEqual(list(edges.columns), ["SourceID", "TargetID", "Weight"])
+        # Auto feature selection keeps numerics, drops the non-numeric "site".
+        self.assertEqual(set(manifest["feature_columns"]), {"age", "stage"})
+        self.assertIn("site", manifest["dropped_columns"])
+        self.assertEqual(manifest["n_cases"], 12)
+        self.assertEqual(len(manifest["source_sha256"]), 64)
+
+    def test_missing_id_column_raises(self):
+        import epinet_registry as ereg
+
+        with self.assertRaises(ValueError):
+            ereg.adapt(self._table(), ereg.RegistryProfile(id_column="nope"))
+
+    def test_edge_strategy_none_yields_no_edges(self):
+        import epinet_registry as ereg
+
+        result = ereg.adapt(self._table(), ereg.RegistryProfile(id_column="case_id", edge_strategy="none"))
+        self.assertEqual(len(result["edges"]), 0)
+
+    def test_shared_attribute_edges_link_matching_cases(self):
+        import epinet_registry as ereg
+
+        profile = ereg.RegistryProfile(
+            id_column="case_id", edge_strategy="shared", shared_column="site",
+        )
+        result = ereg.adapt(self._table(), profile)
+        # Two "site" groups of 6 -> each fully connected: 2 * C(6,2) = 30 edges.
+        self.assertEqual(len(result["edges"]), 30)
+
+    def test_output_runs_through_epinet(self):
+        import epinet_registry as ereg
+
+        result = ereg.adapt(self._table(), ereg.RegistryProfile(id_column="case_id", outcome_column="status"))
+        graph = et.build_graph(result["nodes"], result["edges"], weight_column="Weight")
+        features = et.generate_graph_features(graph)
+        self.assertEqual(graph.number_of_nodes(), 12)
+        self.assertEqual(len(features), 12)
+
+    def test_same_profile_makes_sites_column_compatible(self):
+        import epinet_registry as ereg
+
+        table = self._table(n=12)
+        profile = ereg.RegistryProfile(id_column="case_id", outcome_column="status")
+        a = ereg.adapt(table.iloc[:6], profile)["nodes"]
+        b = ereg.adapt(table.iloc[6:], profile)["nodes"]
+        # The federation precondition: identical columns from the same profile.
+        self.assertEqual(list(a.columns), list(b.columns))
+
+    def test_profile_from_dict_rejects_unknown_keys(self):
+        import epinet_registry as ereg
+
+        with self.assertRaises(ValueError):
+            ereg.RegistryProfile.from_dict({"id_column": "x", "bogus": 1})
+
+
 class IngestNormalizationTests(unittest.TestCase):
     """Front-end column-alias normalization (epinet_ingest)."""
 
