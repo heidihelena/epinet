@@ -1053,6 +1053,71 @@ class FederatedFitTests(unittest.TestCase):
         self.assertLess(res["max_mean_diff"], 1e-9)
 
 
+class FederatedContestabilityTests(unittest.TestCase):
+    """Flip-distance scores federate exactly; only de-identified summaries cross."""
+
+    def _design(self):
+        repo = Path(__file__).resolve().parents[1]
+        nodes, edges = et.load_tables(
+            str(repo / "synthetic_nodes.csv"), str(repo / "synthetic_edges.csv")
+        )
+        graph = et.build_graph(nodes, edges)
+        feats = et.generate_graph_features(graph)
+        X = et.build_design_matrix(feats, nodes, id_column="ID", outcome_column="Outcome")
+        y = nodes.assign(ID=nodes["ID"].astype(str)).set_index("ID")["Outcome"].reindex(X.index)
+        sites = pd.Series(np.where(np.arange(len(X)) % 2 == 0, "A", "B"), index=X.index)
+        return X, y, sites
+
+    def _fit(self, X, y, sites):
+        aggs = [
+            efed.site_aggregates(X.loc[sites == s], y.loc[sites == s])
+            for s in sorted(sites.unique())
+        ]
+        return efed.combine_aggregates(aggs)
+
+    def test_scores_federate_exactly(self):
+        X, y, sites = self._design()
+        fit = self._fit(X, y, sites)
+        local = {}
+        for s in sorted(sites.unique()):
+            rows = sites == s
+            local.update(dict(zip(X.loc[rows].index, efed.local_flip_distances(X.loc[rows], fit))))
+        central = ecn.contestability(X, y=y, metric="euclidean")["assignments"].set_index("ID")
+        fed_flip = pd.Series(local).reindex(central.index).to_numpy()
+        diff = float(np.max(np.abs(fed_flip - central["flip_distance"].to_numpy())))
+        self.assertLess(diff, 1e-9)
+
+    def test_federated_summary_matches_centralized(self):
+        X, y, sites = self._design()
+        fit = self._fit(X, y, sites)
+        summaries = [
+            efed.site_contestability(X.loc[sites == s], y.loc[sites == s], fit)
+            for s in sorted(sites.unique())
+        ]
+        fed = efed.combine_contestability(summaries, contest_quantile=0.1)
+        central = ecn.contestability(X, y=y, metric="euclidean", contest_quantile=0.1)["summary"]
+        self.assertAlmostEqual(fed["flip_distance"]["mean"], central["flip_distance"]["mean"], places=9)
+        self.assertAlmostEqual(fed["flip_distance"]["std"], central["flip_distance"]["std"], places=6)
+        self.assertEqual(
+            fed["runner_up_counts"],
+            {str(k): int(v) for k, v in central["runner_up_counts"].items()},
+        )
+        # Same top value-of-information feature, and contested count ~= q*N.
+        self.assertEqual(next(iter(fed["feature_voi"])), next(iter(central["feature_leverage"])))
+        self.assertEqual(fed["flip_distance"]["approx_n_contested"], central["flip_distance"]["n_contested"])
+
+    def test_site_summary_is_aggregate_only(self):
+        X, y, _ = self._design()
+        fit = self._fit(X, y, pd.Series("A", index=X.index))
+        summary = efed.site_contestability(X, y, fit)
+        self.assertEqual(
+            set(summary),
+            {"columns", "n", "flip_count", "flip_sum", "flip_sumsq", "flip_min", "flip_max",
+             "flip_hist", "runner_up_counts", "leverage_sum", "leverage_n",
+             "agree_count", "labeled_count"},
+        )
+
+
 class IngestNormalizationTests(unittest.TestCase):
     """Front-end column-alias normalization (epinet_ingest)."""
 

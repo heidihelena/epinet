@@ -36,8 +36,14 @@ import pandas as pd
 
 import epinet_cluster
 import epinet_common
+import epinet_contest
 
 VARIANCE_TOL = 1e-12  # matches epinet_cluster.standardize's zero-variance cutoff
+
+# Shared histogram bins for the federated flip-distance quantile (in SD units).
+# Part of the contract: every site bins against the same edges so the coordinator
+# can sum the histograms. The last bin absorbs the (rare) tail beyond the range.
+DEFAULT_FLIP_BINS = np.linspace(0.0, 8.0, 33)
 
 
 def site_aggregates(
@@ -209,4 +215,171 @@ def simulate(
         "max_centroid_diff": max_centroid_diff,
         "federated": fed,
         "centralized": central,
+    }
+
+
+# --- Federated contestability ---------------------------------------------
+# Stage 2 of the derived federated dataset. Given the pooled fit (scaler +
+# centroids) from combine_aggregates, each site computes flip-distance LOCALLY
+# against the global centroids — and because both the standardized node vectors
+# and the centroids were reconstructed exactly, those per-node scores are
+# identical to a centralized run. Only de-identified summaries cross.
+
+
+def local_flip_distances(
+    X: pd.DataFrame,
+    fit: dict[str, object],
+    *,
+    metric: str = "euclidean",
+) -> np.ndarray:
+    """Per-node flip-distance computed at a site against the GLOBAL fit.
+
+    Standardizes the site's rows with the pooled mean/sd and scores them against
+    the pooled standardized centroids. Stays local — this is what proves the
+    scores federate exactly; in deployment only the summary below leaves.
+    """
+    mean = np.asarray(fit["mean"], dtype=float)
+    sd = np.asarray(fit["sd"], dtype=float)
+    centroids = np.asarray(fit["centroids"], dtype=float)
+    Xz = (X[fit["kept_columns"]].to_numpy(dtype=float) - mean) / sd
+    return epinet_contest.flip_distances(Xz, centroids, metric=metric)["flip_distance"]
+
+
+def site_contestability(
+    X: pd.DataFrame,
+    y: pd.Series,
+    fit: dict[str, object],
+    *,
+    metric: str = "euclidean",
+    bin_edges: np.ndarray = DEFAULT_FLIP_BINS,
+) -> dict[str, object]:
+    """One site's de-identified contestability summary against the global fit.
+
+    Carries additive statistics only: flip-distance count/sum/sumsq/min/max and a
+    shared-bin histogram, runner-up class counts, a per-feature value-of-
+    information sum, and nearest-centroid agreement counts. No per-node row.
+    """
+    mean = np.asarray(fit["mean"], dtype=float)
+    sd = np.asarray(fit["sd"], dtype=float)
+    centroids = np.asarray(fit["centroids"], dtype=float)
+    classes = list(fit["classes"])
+    kept_columns = list(fit["kept_columns"])
+
+    Xz = (X[kept_columns].to_numpy(dtype=float) - mean) / sd
+    res = epinet_contest.flip_distances(Xz, centroids, metric=metric)
+    flip = res["flip_distance"]
+    finite = np.isfinite(flip)
+    flip_f = flip[finite]
+
+    # Value-of-information: per-node feature share of the flip gradient, summed.
+    leverage = res["leverage"]
+    row_totals = leverage.sum(axis=1, keepdims=True)
+    shares = np.divide(leverage, row_totals, out=np.zeros_like(leverage), where=row_totals > 0)
+
+    runner_up_counts: dict[str, int] = {}
+    for idx in res["runner_up"][finite]:
+        cls = classes[int(idx)]
+        runner_up_counts[cls] = runner_up_counts.get(cls, 0) + 1
+
+    # Nearest-centroid agreement on labeled nodes only.
+    labeled = epinet_common.labeled_mask(y.reindex(X.index)).to_numpy()
+    nearest_names = np.array([classes[int(i)] for i in res["nearest"]])
+    y_str = y.reindex(X.index).astype("string").to_numpy()
+    agree = int(np.sum(labeled & (nearest_names == y_str)))
+
+    counts, _ = np.histogram(np.clip(flip_f, bin_edges[0], bin_edges[-1]), bins=bin_edges)
+
+    return {
+        "columns": kept_columns,
+        "n": int(len(flip)),
+        "flip_count": int(finite.sum()),
+        "flip_sum": float(flip_f.sum()),
+        "flip_sumsq": float((flip_f**2).sum()),
+        "flip_min": float(flip_f.min()) if flip_f.size else None,
+        "flip_max": float(flip_f.max()) if flip_f.size else None,
+        "flip_hist": counts.tolist(),
+        "runner_up_counts": runner_up_counts,
+        "leverage_sum": shares.sum(axis=0).tolist(),
+        "leverage_n": int(shares.shape[0]),
+        "agree_count": agree,
+        "labeled_count": int(labeled.sum()),
+    }
+
+
+def combine_contestability(
+    summaries: list[dict[str, object]],
+    *,
+    contest_quantile: float = 0.1,
+    bin_edges: np.ndarray = DEFAULT_FLIP_BINS,
+) -> dict[str, object]:
+    """Pool per-site contestability summaries into a federated summary.
+
+    Flip-distance mean/std/min/max, runner-up counts, value-of-information, and
+    agreement are EXACT additive aggregates. The contested threshold is the one
+    approximate piece: it reads a quantile off the summed shared-bin histogram
+    (bin-resolution accuracy), because a quantile is an order statistic, not a
+    sum.
+    """
+    if not summaries:
+        raise ValueError("need at least one site summary")
+    columns = summaries[0]["columns"]
+    for summary in summaries:
+        if summary["columns"] != columns:
+            raise ValueError("sites disagree on the feature contract")
+
+    count = sum(int(s["flip_count"]) for s in summaries)
+    flip_sum = sum(float(s["flip_sum"]) for s in summaries)
+    flip_sumsq = sum(float(s["flip_sumsq"]) for s in summaries)
+    mean = flip_sum / count if count else None
+    std = float(np.sqrt(max(flip_sumsq / count - mean**2, 0.0))) if count else None
+    mins = [s["flip_min"] for s in summaries if s["flip_min"] is not None]
+    maxs = [s["flip_max"] for s in summaries if s["flip_max"] is not None]
+
+    hist = np.sum([np.asarray(s["flip_hist"], dtype=float) for s in summaries], axis=0)
+    # Approximate quantile threshold from the summed histogram, interpolating
+    # within the crossing bin (assume-uniform). The contested COUNT is q*N by
+    # definition (it is a quantile cut); the threshold VALUE is the approximate
+    # quantity, and its error is bounded by the bin width.
+    cum = np.cumsum(hist)
+    total = float(cum[-1]) if cum.size else 0.0
+    threshold = None
+    n_contested = 0
+    if total > 0:
+        target = contest_quantile * total
+        k = min(int(np.searchsorted(cum, target, side="left")), len(hist) - 1)
+        cum_before = float(cum[k - 1]) if k > 0 else 0.0
+        bin_count = float(hist[k])
+        frac = min(max((target - cum_before) / bin_count, 0.0), 1.0) if bin_count > 0 else 0.0
+        threshold = float(bin_edges[k] + frac * (bin_edges[k + 1] - bin_edges[k]))
+        n_contested = int(round(target))
+
+    runner_up_counts: dict[str, int] = {}
+    for summary in summaries:
+        for cls, n in summary["runner_up_counts"].items():
+            runner_up_counts[cls] = runner_up_counts.get(cls, 0) + int(n)
+
+    leverage_sum = np.sum([np.asarray(s["leverage_sum"], dtype=float) for s in summaries], axis=0)
+    leverage_n = sum(int(s["leverage_n"]) for s in summaries)
+    mean_share = leverage_sum / leverage_n if leverage_n else leverage_sum
+    feature_voi = dict(
+        sorted(zip(columns, mean_share.tolist()), key=lambda kv: kv[1], reverse=True)
+    )
+
+    agree = sum(int(s["agree_count"]) for s in summaries)
+    labeled = sum(int(s["labeled_count"]) for s in summaries)
+
+    return {
+        "n_scored": sum(int(s["n"]) for s in summaries),
+        "flip_distance": {
+            "mean": mean,
+            "std": std,
+            "min": min(mins) if mins else None,
+            "max": max(maxs) if maxs else None,
+            "contest_quantile": contest_quantile,
+            "approx_contest_threshold": threshold,
+            "approx_n_contested": n_contested,
+        },
+        "runner_up_counts": runner_up_counts,
+        "feature_voi": feature_voi,
+        "nearest_centroid_agreement": (agree / labeled) if labeled else None,
     }
