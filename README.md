@@ -418,6 +418,101 @@ Default edge columns:
 
 See `Data-format.md` for details.
 
+## Methods: Contestability and the Limits of "More"
+
+Across the worked examples one result keeps recurring, and it is worth stating as
+a method rather than re-discovering per dataset: **adding tests does not rescue
+the cases the tests disagree on.** More features (`score_comparison`), fitted
+fusion (`test_fusion`), and — by the same argument — hand-set heuristics all fail
+in the same region for the same reason. Where discrimination on the disagreement
+subset collapses to chance (AUC ≈ 0.5), the separating information is *not present
+in the features*. No function of those features recovers it: not a fitted model,
+not a centroid average, not an `if/else` rule. The grey zone is
+**information-limited, not method-limited** — and a heuristic is just a hand-set
+decision surface over the same inputs, inheriting the same fragility while
+dropping the null model and CIs that would expose it.
+
+That reframes what the toolkit is for in the contested region. The job is not to
+decide the hard cases but to **measure and route** them: label each case with
+*how contestable it is*, *whether that contest is structured or idiosyncratic*,
+and *what additional measurement (if any) would resolve it*. Three existing lenses
+already compose into that map.
+
+### 1. Where is the contest, and is it structured? (implemented)
+
+`divergence_topography.py` is the empirical contestability map: two labelings of
+the same objects, a per-object `concordant`/`discordant` flag, and a permutation
+null that asks whether the discordance is *locatable in feature space* or just
+labeling noise.
+
+```bash
+python examples/divergence_topography.py
+python epinet_toolkit.py \
+  --nodes examples/lidc_divergence_nodes.csv --edges examples/lidc_edges.csv \
+  --outcome-column Outcome --split-strategy community \
+  --permutation-test 200 --no-run-paths \
+  --output-dir examples/lidc_divergence_outputs
+```
+
+Read the p-value as the verdict: a structured contest (worth a feature-space
+explanation) versus an idiosyncratic one (no amount of modeling will tidy it). On
+LIDC it is structured but only shallowly (p ≈ 0.015, barely over base rate) — an
+honest "mostly irreducible" answer, reported with its smallness intact.
+
+### 2. Which cases sit on a boundary? (implemented)
+
+The clustering lens already emits a per-case contestability signal: distance to
+*every* outcome-class centroid, plus the flag for nodes whose nearest centroid
+disagrees with their own label.
+
+```bash
+python epinet_toolkit.py --run-clusters --distance-metric mahalanobis \
+  --cluster-labeled-only --output-dir epinet_outputs
+```
+
+In `node_clusters.csv`, a case whose two smallest class-centroid distances are
+near-equal sits *on the boundary in feature space*, regardless of which side of a
+score threshold it landed on. Those are the cases to route, not to trust.
+
+### 3. Is the comparison even runnable here? (implemented)
+
+`score_comparison.py` enforces the gap-population rule instead of papering over
+it: a score is **not computed** when its dominant predictor domain is absent
+(LIDC has no demographics, smoking, or growth), and the NTOG
+normalize-by-available-weight rule makes that refusal explicit rather than
+imputing a fake number. The honest output of a comparison can be "unmeasurable
+here, and here is which missing domain caused it" — a property of the design, not
+a failure of the run.
+
+### Forward direction: flip-distance and value-of-information (design, not yet implemented)
+
+The natural next lens makes the boundary analytic. For a score `s(x)` and
+threshold `τ`, the decision-relevant quantity is not distance-to-threshold but
+**flip-distance** — the smallest input change that reverses the call:
+
+```
+flip_distance(x) ≈ |s(x) − τ| / ‖∇s(x)‖
+```
+
+A case is contestable when its flip-distance is *smaller than the real-world
+measurement error* of its inputs ("this call reverses if the nodule were measured
+0.4 mm differently"). The same gradient `∇s(x)` then points at the single most
+decision-relevant missing measurement — a computable **value-of-information**
+signal: order *that* test, or report that nothing available would move the call.
+
+Two cautions are load-bearing, not optional:
+
+- A gradient is only as meaningful as the surface under it. EpiNet's ported scores
+  are explicitly unvalidated; flip-distance computed on them measures the
+  **fragility of the score**, not the borderline-ness of the patient. Keep those
+  two claims separate, or it is confident nonsense.
+- Report flip-distance *relative to input measurement error*, not as an absolute
+  number. A decision that flips only under perturbations larger than your
+  measurement noise is robust; one that flips under smaller perturbations is not.
+
+This direction is documented here so the existing contestability outputs (1–3) are
+read as steps toward it, not as ends in themselves.
+
 ## Methodological Boundaries
 
 The model is intentionally simple. It does not infer causality, outbreak dynamics,
