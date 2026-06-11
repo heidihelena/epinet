@@ -11,6 +11,7 @@ import pandas as pd
 import epinet_cluster as ec
 import epinet_common as ecommon
 import epinet_contest as ecn
+import epinet_federated as efed
 import epinet_toolkit as et
 import epinet_viz as ev
 
@@ -975,6 +976,81 @@ class ScientificStandardsTests(unittest.TestCase):
             )
             self.assertGreater((out / "cal.png").stat().st_size, 0)
             self.assertGreater((out / "lc.png").stat().st_size, 0)
+
+
+class FederatedFitTests(unittest.TestCase):
+    """Aggregates-only federation reconstructs the centralized scaler + centroids."""
+
+    def _labeled_matrix(self, n=40, d=4, seed=0):
+        rng = np.random.default_rng(seed)
+        X = pd.DataFrame(
+            rng.normal(size=(n, d)),
+            columns=[f"f{i}" for i in range(d)],
+            index=[f"n{i}" for i in range(n)],
+        )
+        y = pd.Series(["x", "y"] * (n // 2), index=X.index, name="Outcome")
+        return X, y
+
+    def test_two_site_fit_matches_centralized(self):
+        X, y = self._labeled_matrix()
+        sites = np.where(np.arange(len(X)) % 2 == 0, "A", "B")
+        res = efed.simulate(X, y, sites)
+        # Federated == centralized to floating-point precision.
+        self.assertLess(res["max_mean_diff"], 1e-9)
+        self.assertLess(res["max_sd_diff"], 1e-9)
+        self.assertLess(res["max_centroid_diff"], 1e-9)
+        self.assertEqual(res["n_total"], len(X))
+
+    def test_three_way_split_still_matches(self):
+        X, y = self._labeled_matrix(n=60, seed=2)
+        sites = np.array([f"S{i % 3}" for i in range(len(X))])
+        res = efed.simulate(X, y, sites)
+        self.assertEqual(len(res["sites"]), 3)
+        self.assertLess(res["max_centroid_diff"], 1e-9)
+
+    def test_aggregate_message_is_only_counts_and_sums(self):
+        X, y = self._labeled_matrix(n=10)
+        agg = efed.site_aggregates(X, y)
+        # The message carries no per-row data — only counts and summed vectors.
+        self.assertEqual(
+            set(agg), {"columns", "n", "sum", "sumsq", "class_n", "class_sum", "suppressed"}
+        )
+        self.assertEqual(len(agg["sum"]), X.shape[1])
+        self.assertEqual(agg["n"], len(X))
+        self.assertEqual(sum(agg["class_n"].values()), len(X))
+
+    def test_small_cell_suppression_drops_rare_class(self):
+        X = pd.DataFrame(
+            {"f1": [0.0, 1, 2, 3, 4, 5], "f2": [1.0, 1, 0, 0, 1, 2]},
+            index=[f"n{i}" for i in range(6)],
+        )
+        y = pd.Series(["a", "a", "b", "b", "a", "rare"], index=X.index, name="Outcome")
+        agg = efed.site_aggregates(X, y, min_cell=2)
+        self.assertIn("rare", agg["suppressed"])
+        self.assertNotIn("rare", agg["class_n"])
+        combined = efed.combine_aggregates([agg])
+        self.assertNotIn("rare", combined["classes"])
+        self.assertIn("a", combined["classes"])
+
+    def test_contract_mismatch_raises(self):
+        a = efed.site_aggregates(pd.DataFrame({"f": [1.0, 2.0]}), pd.Series(["a", "b"]))
+        b = efed.site_aggregates(pd.DataFrame({"g": [1.0, 2.0]}), pd.Series(["a", "b"]))
+        with self.assertRaises(ValueError):
+            efed.combine_aggregates([a, b])
+
+    def test_bundled_synthetic_cohort_federates_exactly(self):
+        repo = Path(__file__).resolve().parents[1]
+        nodes, edges = et.load_tables(
+            str(repo / "synthetic_nodes.csv"), str(repo / "synthetic_edges.csv")
+        )
+        graph = et.build_graph(nodes, edges)
+        feats = et.generate_graph_features(graph)
+        X = et.build_design_matrix(feats, nodes, id_column="ID", outcome_column="Outcome")
+        y = nodes.assign(ID=nodes["ID"].astype(str)).set_index("ID")["Outcome"].reindex(X.index)
+        sites = np.where(np.arange(len(X)) % 2 == 0, "A", "B")
+        res = efed.simulate(X, y, sites)
+        self.assertLess(res["max_centroid_diff"], 1e-9)
+        self.assertLess(res["max_mean_diff"], 1e-9)
 
 
 class IngestNormalizationTests(unittest.TestCase):
