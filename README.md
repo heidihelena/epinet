@@ -284,6 +284,15 @@ to the reader, not the nodule. A pathology drop-in (`--pathology`) runs the same
 divergence analysis against a lower-variance reference when the data is supplied.
 See `examples/divergence_topography_usecase.md`.
 
+`examples/pathology_validation.py` runs the real version against the TCIA
+LIDC-IDRI tissue diagnoses. The headline: on 80 histopathology-confirmed
+patients, **93% of radiologist-"indeterminate" cases were malignant** — the
+hedge tier hides cancer, and acting only on "suspicious" misses 40% of cancers.
+The pathology reference is itself selection-biased (7 benigns; tissue is taken
+when cancer is suspected), so specificity is unmeasurable from it — every
+reference is a centroid with its own selection topography. See
+`examples/pathology_validation_usecase.md`.
+
 ## Nordic Lung Cancer Quality-Indicator Example
 
 A larger, real-domain example models lung cancer pathway quality indicators

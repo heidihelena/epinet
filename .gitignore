@@ -13,6 +13,7 @@ examples/lidc_provenance.csv
 examples/lidc_divergence_nodes.csv
 examples/lidc_divergence_outputs/
 examples/lidc_diagnosis.csv
+examples/lidc_pathology_outputs/
 trained_model.joblib
 confusion_matrix.png
 
