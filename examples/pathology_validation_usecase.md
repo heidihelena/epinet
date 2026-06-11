@@ -69,6 +69,31 @@ Three things this makes concrete, and they are the publishable core:
    genuine, citable signal — and it survived precisely because the pipeline
    never claimed the radiologist label was truth.
 
+## Sensitivity analysis (specification curve)
+
+The headline rests on three analyst choices, so `pathology_sensitivity.py` sweeps
+all of them on the histopathology-confirmed subset and reports the range:
+
+1. index-nodule aggregation — most-suspicious / largest / mean-malignancy
+2. malignancy→tier threshold — wide indeterminate (2.5–3.5) / strict (==3)
+3. pathology "malignant" set — primary+metastatic {2,3} / primary lung cancer only {2}
+
+Across all **12 specifications**:
+
+- **Hedge-bucket malignant fraction: 0.71–0.94 (median 0.88).** Every reasonable
+  path leaves the radiologist-indeterminate bucket majority-malignant. The most
+  conservative cell — strict indeterminate, primary-lung-cancer-only, most-
+  suspicious nodule — is still 5/7 = 0.71; restricting "malignant" to primary
+  lung cancer only (dropping metastatic) keeps it at 0.71–0.89.
+- **Suspicious-only sensitivity: 0.29–0.72 — below 0.75 in 12/12 specs.** Acting
+  only on "suspicious_high" misses at least a quarter (up to ~70% under mean
+  aggregation, which pushes patients into the indeterminate bucket) of cancers
+  under every specification.
+
+Both core findings are robust to the forking choices, not an artifact of the
+index-nodule definition. (`pathology_sensitivity.csv` / `.json` hold the full
+grid.)
+
 ## Boundaries
 
 - n is small (80 histopath; 118 confirmed) and patient-level. These are
