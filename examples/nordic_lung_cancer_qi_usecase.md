@@ -125,6 +125,38 @@ the indicators that require new infrastructure — a concrete, prioritised
 harmonization to-do list that mirrors the project's own
 "importance-exceeds-feasibility" logic.
 
+### 4. Feature-space clustering and centroid distances
+
+The path lens above measures *topological* distance. The clustering lens
+(`--run-clusters --distance-metric mahalanobis`) measures **feature-space**
+distance instead: each node becomes a standardized vector (graph features +
+attributes), k-means finds centroids, and each node gets a Mahalanobis distance
+to every feasibility-tier centroid — the network analogue of scoring a lung
+nodule by its distance to risk-tier centroids in a standardized feature space.
+
+The nearest-tier-centroid classifier recovers 16 of 17 indicator tiers in
+feature space (in-sample accuracy 0.94). The single **feature-space outlier** is
+the actionable finding:
+
+| Indicator | Actual tier | Nearest centroid | dist→broad | dist→partial |
+|-----------|-------------|------------------|-----------|--------------|
+| 30-day postoperative mortality | partial | **broad** | 2.44 | 3.18 |
+
+30-day postoperative mortality is currently captured by only two registries
+(tier *partial*), yet its feature vector sits closest to the **broad** centroid.
+The reason is mechanistic: it is an outcome-type indicator built on
+**mortality linkage** — the exact infrastructure every Nordic registry already
+runs for survival reporting. In other words, of all the non-universal
+indicators, this is the one most structurally ready to go pan-Nordic, because
+the data substrate is already in place everywhere. That is precisely the kind of
+"near a higher tier despite its nominal label" signal the nodule centroid work
+looks for, transplanted to the registry-capability setting.
+
+Euclidean and Mahalanobis agree on the clustering but Mahalanobis is the better
+metric here (nearest-centroid accuracy 0.94 vs 0.88) because the graph features
+are strongly correlated — degree, weighted degree, and PageRank move together —
+and Mahalanobis discounts that shared variance.
+
 ## Boundaries
 
 - This is a **structural / capability** model, not a clinical or outcomes model.

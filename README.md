@@ -32,6 +32,9 @@ clinical or public-health decision support.
 - Label-permutation null model (`--permutation-test N`) with empirical
   p-values, so observed scores are compared against chance instead of read in isolation.
 - Shortest-path analysis from source nodes to explicit target nodes or to nodes with a target outcome.
+- Feature-space clustering: k-means centroids plus per-node distance to every
+  outcome-class centroid (Euclidean or Mahalanobis) — a nearest-centroid view
+  that complements the topological shortest paths with attribute-space distance.
 - Per-target coverage summaries — the counterpart to the per-source nearest-target
   table — showing how many sources reach each target and at what distance.
 - CSV/JSON outputs for downstream inspection.
@@ -215,6 +218,30 @@ around claims and papers. It does not infer whether a claim is true.
 For CiteMatch, avoid calling this a fastest path unless an edge column truly encodes
 time or delay. The useful question is usually the best evidence route: nearest by
 hops, lowest evidence distance, or strongest relationship path.
+
+## Feature-Space Clustering
+
+Shortest paths measure *topological* distance (hops/weights along edges).
+Clustering measures *feature-space* distance instead: each node becomes a
+standardized vector of graph features plus numeric attributes, k-means finds
+centroids, and each node gets a distance to every outcome-class centroid — a
+transparent nearest-centroid (Rocchio) view.
+
+```bash
+python epinet_toolkit.py --run-clusters --distance-metric mahalanobis --n-clusters 0
+```
+
+- `--n-clusters 0` uses the number of outcome classes when labels exist,
+  otherwise selects k by silhouette score.
+- `--distance-metric mahalanobis` accounts for correlated/scaled features (the
+  graph centralities are highly correlated); `euclidean` is the isotropic default.
+
+Outputs: `node_clusters.csv` (cluster id, distance to own centroid, distance to
+each class centroid, nearest-centroid prediction), `cluster_centroids.csv`,
+`cluster_summary.json` (silhouette, inertia, cluster×outcome composition,
+nearest-centroid in-sample accuracy), and `plots/feature_clusters.png` (a PCA
+projection colored by cluster). The nodes whose nearest class centroid disagrees
+with their actual label are the feature-space outliers worth inspecting.
 
 ## Nordic Lung Cancer Quality-Indicator Example
 

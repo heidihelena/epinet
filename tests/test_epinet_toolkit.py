@@ -7,6 +7,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+import epinet_cluster as ec
 import epinet_toolkit as et
 import epinet_viz as ev
 
@@ -225,6 +226,9 @@ class ToolkitTests(unittest.TestCase):
             include_centrality=False,
             run_model=True,
             run_paths=True,
+            run_clusters=False,
+            n_clusters=0,
+            distance_metric="euclidean",
             make_plots=False,
             n_iterations=1,
             split_strategy="random",
@@ -393,6 +397,68 @@ class ToolkitTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             path = ev.plot_network(graph, Path(td) / "net.png", outcome_attribute="Outcome")
             self.assertGreater(path.stat().st_size, 0)
+
+    def _separable_design(self):
+        # Two well-separated blobs in a 3-feature space, labeled by blob.
+        rng = np.random.default_rng(3)
+        a = rng.normal(0.0, 0.3, size=(12, 3))
+        b = rng.normal(5.0, 0.3, size=(12, 3))
+        X = pd.DataFrame(
+            np.vstack([a, b]),
+            columns=["f1", "f2", "f3"],
+            index=[f"n{i}" for i in range(24)],
+        )
+        y = pd.Series(["a"] * 12 + ["b"] * 12, index=X.index, name="Outcome")
+        return X, y
+
+    def test_distance_metrics_match_known_geometry(self):
+        X = pd.DataFrame({"f1": [0.0, 3.0], "f2": [0.0, 4.0]}, index=["p", "q"])
+        Xz, _ = ec.standardize(X)
+        d = ec.distances_to_points(Xz, Xz, metric="euclidean")
+        # Symmetric, zero on the diagonal, and equal off-diagonal.
+        self.assertAlmostEqual(d[0, 0], 0.0)
+        self.assertAlmostEqual(d[0, 1], d[1, 0])
+        self.assertGreater(d[0, 1], 0.0)
+
+    def test_cluster_recovers_blobs_and_centroid_classifier(self):
+        X, y = self._separable_design()
+        for metric in ("euclidean", "mahalanobis"):
+            result = ec.cluster_nodes(X, y=y, n_clusters=0, metric=metric)
+            summary = result["summary"]
+            self.assertEqual(summary["n_clusters"], 2)
+            # Each k-means cluster should be pure in outcome composition.
+            for comp in summary["cluster_outcome_composition"].values():
+                self.assertEqual(sum(1 for v in comp.values() if v > 0), 1)
+            # Nearest-centroid recovers the labels exactly on separable blobs.
+            self.assertEqual(
+                summary["class_centroids"]["nearest_centroid_insample_accuracy"], 1.0
+            )
+            assignments = result["assignments"]
+            self.assertIn("dist_to_a", assignments.columns)
+            self.assertIn("nearest_class_centroid", assignments.columns)
+
+    def test_cluster_excludes_constant_features(self):
+        X = pd.DataFrame(
+            {"varies": [0.0, 1.0, 2.0, 3.0], "constant": [5.0, 5.0, 5.0, 5.0]},
+            index=list("abcd"),
+        )
+        result = ec.cluster_nodes(X, n_clusters=2, metric="euclidean")
+        self.assertEqual(result["summary"]["feature_columns"], ["varies"])
+
+    def test_run_writes_cluster_outputs_and_plot(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            out = root / "out"
+            args = self._synthetic_run_args(
+                root, out, run_clusters=True, distance_metric="mahalanobis",
+                n_clusters=0, make_plots=True,
+            )
+            summary = et.run(args)
+            self.assertIn("clusters", summary)
+            self.assertTrue((out / "node_clusters.csv").exists())
+            self.assertTrue((out / "cluster_centroids.csv").exists())
+            self.assertTrue((out / "cluster_summary.json").exists())
+            self.assertIn("feature_clusters.png", {Path(p).name for p in summary["plots"]})
 
     def test_plot_network_handles_missing_outcome(self):
         graph = et.build_graph(

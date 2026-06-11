@@ -206,6 +206,64 @@ def plot_permutation_null(
     return _save(fig, output_path)
 
 
+def plot_clusters_pca(
+    standardized: np.ndarray,
+    cluster_labels: np.ndarray,
+    output_path: Path,
+    *,
+    outcomes: list[str] | None = None,
+    metric: str = "euclidean",
+) -> Path:
+    """Project the standardized feature space to 2D (PCA) and show clusters.
+
+    Points are colored by k-means cluster; centroids are drawn as black crosses.
+    If outcome labels are supplied, marker shape encodes the outcome class so
+    cluster/label agreement is visible at a glance.
+    """
+    from sklearn.decomposition import PCA
+
+    n_components = min(2, standardized.shape[1])
+    coords = PCA(n_components=n_components, random_state=0).fit_transform(standardized)
+    if coords.shape[1] == 1:
+        coords = np.column_stack([coords[:, 0], np.zeros(len(coords))])
+
+    if outcomes is not None:
+        outcomes = ["unlabeled" if pd.isna(o) else str(o) for o in outcomes]
+
+    fig, ax = plt.subplots(figsize=(8, 6))
+    clusters = sorted(set(cluster_labels))
+    markers = ["o", "s", "^", "D", "v", "P", "X", "*"]
+    outcome_categories = sorted(set(outcomes)) if outcomes else [None]
+
+    for ci, cluster in enumerate(clusters):
+        color = CATEGORY_COLORS[ci % len(CATEGORY_COLORS)]
+        for mi, category in enumerate(outcome_categories):
+            mask = cluster_labels == cluster
+            if outcomes is not None:
+                mask = mask & (np.asarray(outcomes) == category)
+            if not mask.any():
+                continue
+            label = f"cluster {cluster}" if category is None else f"cluster {cluster} / {category}"
+            ax.scatter(
+                coords[mask, 0],
+                coords[mask, 1],
+                c=color,
+                marker=markers[mi % len(markers)],
+                edgecolors="black",
+                linewidths=0.4,
+                s=70,
+                label=label,
+            )
+        centroid = coords[cluster_labels == cluster].mean(axis=0)
+        ax.scatter(centroid[0], centroid[1], c="black", marker="X", s=160, zorder=5)
+
+    ax.set_xlabel("PC1")
+    ax.set_ylabel("PC2")
+    ax.set_title(f"Feature-space clusters ({metric} centroids; black X = cluster centroid)")
+    ax.legend(fontsize=7, loc="best")
+    return _save(fig, output_path)
+
+
 def plot_confusion_matrix(
     matrix: list[list[int]],
     classes: list[str],
@@ -245,6 +303,7 @@ def generate_run_plots(
     importance: pd.DataFrame | None = None,
     iteration_metrics: pd.DataFrame | None = None,
     permutation_metrics: pd.DataFrame | None = None,
+    clustering: dict | None = None,
     seed: int = 42,
 ) -> list[Path]:
     """Render every figure supported by the available run artifacts."""
@@ -297,6 +356,22 @@ def generate_run_plots(
                 f1_summary["observed_mean"],
                 f1_summary["p_value"],
                 plots_dir / "permutation_null.png",
+            )
+        )
+    if clustering is not None and "_standardized" in clustering:
+        outcomes = None
+        assignments = clustering.get("assignments")
+        if assignments is not None and "outcome" in assignments.columns:
+            outcomes = (
+                assignments["outcome"].astype("string").fillna("unlabeled").tolist()
+            )
+        written.append(
+            plot_clusters_pca(
+                clustering["_standardized"],
+                clustering["_cluster_labels"],
+                plots_dir / "feature_clusters.png",
+                outcomes=outcomes,
+                metric=clustering["summary"].get("distance_metric", "euclidean"),
             )
         )
 

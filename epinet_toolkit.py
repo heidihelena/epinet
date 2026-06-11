@@ -158,6 +158,25 @@ def numeric_node_attributes(
     return numeric.set_index(id_column)
 
 
+def build_design_matrix(
+    features: pd.DataFrame,
+    nodes: pd.DataFrame,
+    *,
+    id_column: str,
+    outcome_column: str | None = None,
+) -> pd.DataFrame:
+    """Join graph features with numeric node attributes into one matrix.
+
+    This is the shared feature representation used by both the supervised
+    outcome model and the feature-space clustering, indexed by node ID and
+    covering every node in the graph (scaffold included).
+    """
+    graph_features = features.set_index("ID")
+    exclude = [id_column] + ([outcome_column] if outcome_column else [])
+    node_numeric = numeric_node_attributes(nodes, id_column=id_column, exclude_columns=exclude)
+    return graph_features.join(node_numeric, how="left").fillna(0)
+
+
 def community_labels(graph: nx.Graph) -> pd.Series:
     """Assign each node a community id via greedy modularity maximization.
 
@@ -286,13 +305,7 @@ def train_outcome_model(
     if n_permutations < 0:
         raise ValueError("n_permutations must be non-negative")
 
-    graph_features = features.set_index("ID")
-    node_numeric = numeric_node_attributes(
-        nodes,
-        id_column=id_column,
-        exclude_columns=[id_column, outcome_column],
-    )
-    X = graph_features.join(node_numeric, how="left").fillna(0)
+    X = build_design_matrix(features, nodes, id_column=id_column, outcome_column=outcome_column)
 
     y = nodes.assign(**{id_column: nodes[id_column].astype(str)}).set_index(id_column)[outcome_column]
 
@@ -741,6 +754,32 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         )
         summary["model"] = model_result["metrics"]
 
+    cluster_result: dict[str, object] | None = None
+    if getattr(args, "run_clusters", False):
+        import epinet_cluster
+
+        design = build_design_matrix(
+            features,
+            nodes,
+            id_column=args.id_column,
+            outcome_column=args.outcome_column,
+        )
+        y_cluster = None
+        if args.outcome_column and args.outcome_column in nodes.columns:
+            y_cluster = (
+                nodes.assign(**{args.id_column: nodes[args.id_column].astype(str)})
+                .set_index(args.id_column)[args.outcome_column]
+            )
+        cluster_result = epinet_cluster.run_clustering(
+            design,
+            output_dir,
+            y=y_cluster,
+            n_clusters=getattr(args, "n_clusters", 0),
+            metric=getattr(args, "distance_metric", "euclidean"),
+            random_state=args.random_state,
+        )
+        summary["clusters"] = cluster_result["summary"]
+
     if getattr(args, "make_plots", False):
         import epinet_viz
 
@@ -754,6 +793,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             importance=model_result["importance"] if model_result else None,
             iteration_metrics=model_result["iteration_metrics"] if model_result else None,
             permutation_metrics=model_result["permutation_metrics"] if model_result else None,
+            clustering=cluster_result,
             seed=args.random_state,
         )
         summary["plots"] = [str(path.relative_to(output_dir)) for path in plots]
@@ -793,6 +833,24 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--include-centrality", action="store_true", help="Add betweenness, closeness, and PageRank features")
     parser.add_argument("--run-model", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--run-paths", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument(
+        "--run-clusters",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Feature-space k-means clustering with centroid distances (attribute-space counterpart to shortest paths)",
+    )
+    parser.add_argument(
+        "--n-clusters",
+        type=int,
+        default=0,
+        help="Number of feature-space clusters; 0 = number of outcome classes, else silhouette-selected",
+    )
+    parser.add_argument(
+        "--distance-metric",
+        choices=["euclidean", "mahalanobis"],
+        default="euclidean",
+        help="Centroid distance metric; mahalanobis accounts for feature correlation/scale",
+    )
     parser.add_argument(
         "--make-plots",
         action=argparse.BooleanOptionalAction,
