@@ -166,6 +166,78 @@ def plot_network(
     return _save(fig, output_path)
 
 
+_INTERACTIVE_TEMPLATE = """<!doctype html>
+<html><head><meta charset="utf-8"><title>{title}</title>
+<script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+<style>
+  body {{ margin: 0; font-family: sans-serif; }}
+  #net {{ width: 100vw; height: 92vh; border-bottom: 1px solid #ddd; }}
+  #legend {{ padding: 6px 12px; font-size: 13px; }}
+  .swatch {{ display: inline-block; width: 12px; height: 12px; margin: 0 4px 0 12px;
+            border-radius: 2px; vertical-align: middle; }}
+</style></head>
+<body>
+<div id="net"></div>
+<div id="legend">{legend}</div>
+<script>
+  const nodes = new vis.DataSet({nodes});
+  const edges = new vis.DataSet({edges});
+  new vis.Network(document.getElementById("net"), {{nodes, edges}}, {{
+    nodes: {{ shape: "dot", size: 12, font: {{ size: 12 }} }},
+    edges: {{ color: {{ color: "#cccccc" }}, smooth: false }},
+    physics: {{ stabilization: true, barnesHut: {{ gravitationalConstant: -8000 }} }},
+    interaction: {{ hover: true, tooltipDelay: 120 }}
+  }});
+</script></body></html>
+"""
+
+
+def network_to_html(
+    graph: nx.Graph,
+    output_path: Path,
+    *,
+    outcome_attribute: str | None = None,
+    title: str = "EpiNet interactive network",
+) -> Path:
+    """Write a self-contained, draggable/zoomable HTML network (vis-network via CDN).
+
+    No extra Python dependency: the graph is embedded as JSON and rendered by
+    vis-network loaded from a CDN. Useful for graphs too large for a readable
+    static spring layout. Nodes are colored by outcome (blank = gray scaffold).
+    """
+    import json
+
+    def _norm(value: object) -> str:
+        return "unlabeled" if epinet_common.is_blank_value(value) else str(value).strip()
+
+    outcomes = {node: _norm(graph.nodes[node].get(outcome_attribute)) if outcome_attribute else ""
+                for node in graph.nodes()}
+    categories = sorted({o for o in outcomes.values() if o and o != "unlabeled"})
+    color_map = {c: CATEGORY_COLORS[i % len(CATEGORY_COLORS)] for i, c in enumerate(categories)}
+    color_map["unlabeled"] = "#BBBBBB"
+    color_map[""] = CATEGORY_COLORS[0]
+
+    nodes_json = json.dumps([
+        {"id": str(n), "label": str(n),
+         "color": color_map.get(outcomes[n], CATEGORY_COLORS[0]),
+         "title": f"{n}" + (f" — {outcome_attribute}={outcomes[n]}" if outcome_attribute else "")}
+        for n in graph.nodes()
+    ])
+    edges_json = json.dumps([{"from": str(u), "to": str(v)} for u, v in graph.edges()])
+
+    legend = ""
+    if outcome_attribute:
+        for c in categories + (["unlabeled"] if "unlabeled" in outcomes.values() else []):
+            label = "unlabeled (scaffold)" if c == "unlabeled" else f"{outcome_attribute}={c}"
+            legend += f'<span class="swatch" style="background:{color_map[c]}"></span>{label}'
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(_INTERACTIVE_TEMPLATE.format(
+        title=title, legend=legend or "drag to reposition, scroll to zoom",
+        nodes=nodes_json, edges=edges_json))
+    return output_path
+
+
 def plot_degree_distribution(graph: nx.Graph, output_path: Path) -> Path:
     degrees = [degree for _, degree in graph.degree()]
     fig, ax = plt.subplots(figsize=(7, 5))
@@ -364,17 +436,24 @@ def generate_run_plots(
     clustering: dict | None = None,
     seed: int = 42,
     image_format: str = "png",
+    interactive: bool = False,
 ) -> list[Path]:
     """Render every figure supported by the available run artifacts.
 
     ``image_format`` selects the file type for every figure: ``png`` (default,
     raster at DEFAULT_DPI) or a vector format (``pdf``/``svg``) for print.
+    ``interactive`` additionally writes a draggable/zoomable ``network.html``.
     """
     plots_dir = output_dir / "plots"
     written: list[Path] = []
 
     def fp(name: str) -> Path:
         return plots_dir / f"{name}.{image_format}"
+
+    if interactive:
+        written.append(
+            network_to_html(graph, plots_dir / "network.html", outcome_attribute=outcome_attribute)
+        )
 
     paths = None
     if nearest is not None and not nearest.empty:

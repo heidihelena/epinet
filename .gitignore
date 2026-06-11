@@ -29,3 +29,6 @@ examples/luna16_provenance.csv
 *.egg-info/
 build/
 dist/
+examples/lymphoma_nodes.csv
+examples/lymphoma_edges.csv
+examples/lymphoma_outputs/

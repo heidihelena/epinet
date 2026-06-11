@@ -1,12 +1,24 @@
 # EpiNet
 
-EpiNet is being shaped as a **general node/edge network analysis toolkit**.
-Epidemiology is one possible use case, but the core logic is intentionally broader:
-load entities and relationships, compute graph features, optionally train a simple
-outcome model, and run shortest-path analysis in parallel.
+EpiNet is a **general node/edge network analysis toolkit**. You load entities and
+relationships from CSVs and it computes graph features, trains and *honestly*
+evaluates an outcome model, finds shortest paths, and clusters nodes by
+feature-space centroid — with publication-quality figures and an interactive
+network view. Epidemiology is one use case; the core logic is intentionally
+domain-neutral (it has been driven through lung cancer quality indicators, lung
+nodule risk, and lymphoma subtyping).
 
-This repository is still a prototype. It should be treated as a demonstrator, not
-clinical or public-health decision support.
+EpiNet is developed and maintained as part of **Vahian**. It is released under
+the permissive MIT license (see `LICENSE`).
+
+This repository is a research and education demonstrator, **not** clinical or
+public-health decision support. Any model it produces must be validated on
+independent, outcome-linked data before it means anything clinically.
+
+What distinguishes it from a thin scikit-learn wrapper is that the honest
+evaluation is the default path: a label-permutation null and (where appropriate)
+community-aware splitting run alongside the headline metric, so a good score
+reflects real signal rather than leakage or chance.
 
 ## What Is Implemented
 
@@ -69,6 +81,22 @@ epinet \
 
 (`epinet ...` is the installed console command; `python epinet_toolkit.py ...`
 works identically without installing.)
+
+## Worked examples
+
+Each example has a builder script and a walkthrough (`examples/*_usecase.md`):
+
+| Example | What it shows |
+|---------|---------------|
+| Nordic lung cancer QI | capability network; semi-supervised model; why community vs random splits change the conclusion |
+| Synthetic nodule cohort | Brock/Mayo/VDT risk models (validated port) + centroid risk tiers |
+| LIDC-IDRI / LUNA16 | real radiologist annotations; the "indeterminate" hedge tier; reader-disagreement topography |
+| Pathology validation | radiologist tier vs tissue diagnosis; the hedge bucket is 93% malignant; specification-curve sensitivity |
+| Score comparison & fusion | Brock vs Mayo vs NTOG; does combining tests help? |
+| **Lymphoma workflow** | turnkey digital-pathology → subtype-classifier model (`examples/lymphoma_workflow_usecase.md`) |
+| NLST harness | ingestion stub for the NLST dataset (run when CDAS data arrives) |
+
+## Quick Start (continued)
 
 This runs the two main lenses side by side:
 
@@ -169,6 +197,13 @@ All figures share one house style (consistent typography, no chartjunk spines,
 colorblind-friendly Okabe-Ito palette) and render at 300 DPI by default. Use
 `--plot-format pdf` (or `svg`) for vector output and `--plot-dpi N` to change the
 raster resolution.
+
+### Interactive network
+
+Add `--interactive-network` to also write `plots/network.html`: a draggable,
+zoomable, hover-labeled network rendered by vis-network (loaded from a CDN — no
+extra Python dependency). It stays readable on graphs far larger than a static
+spring layout can show, and colors nodes by outcome (blank = gray scaffold).
 
 ## Shortest-Path Examples
 

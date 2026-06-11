@@ -522,6 +522,32 @@ class ToolkitTests(unittest.TestCase):
                 [[3, 1], [0, 0]], ["a", "b"], Path(td) / "cm.png")
             self.assertGreater(path.stat().st_size, 0)
 
+    def test_network_to_html_is_self_describing(self):
+        nodes = pd.DataFrame([{"ID": "A", "Outcome": "x"}, {"ID": "B", "Outcome": ""},
+                              {"ID": "C", "Outcome": "y"}])
+        edges = pd.DataFrame([{"SourceID": "A", "TargetID": "B"},
+                              {"SourceID": "B", "TargetID": "C"}])
+        graph = et.build_graph(nodes, edges)
+        with tempfile.TemporaryDirectory() as td:
+            path = ev.network_to_html(graph, Path(td) / "net.html", outcome_attribute="Outcome")
+            html = path.read_text()
+            self.assertIn("vis.DataSet", html)
+            self.assertEqual(html.count('"id":'), 3)
+            self.assertIn("unlabeled (scaffold)", html)  # blank-outcome legend entry
+
+    def test_lymphoma_workflow_builds_runnable_cohort(self):
+        import build_lymphoma_workflow as blw
+
+        features = blw.synthetic_lymphoma_cohort(n_per_class=12, seed=1)
+        nodes, edges = blw.build_similarity_graph(
+            features, id_col="CaseID", label_col="Subtype", k=4)
+        # Outcome stored under its real column name; graph is connected enough to model.
+        self.assertIn("Subtype", nodes.columns)
+        self.assertEqual(set(nodes["Subtype"]), {"DLBCL", "FL", "CLL"})
+        self.assertGreater(len(edges), 0)
+        ids = set(nodes["ID"])
+        self.assertTrue(set(edges["SourceID"]) <= ids and set(edges["TargetID"]) <= ids)
+
     def test_plot_network_handles_missing_outcome(self):
         graph = et.build_graph(
             pd.DataFrame([{"ID": "A"}, {"ID": "B"}]),

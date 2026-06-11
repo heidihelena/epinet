@@ -803,6 +803,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             clustering=cluster_result,
             seed=args.random_state,
             image_format=getattr(args, "plot_format", "png"),
+            interactive=getattr(args, "interactive_network", False),
         )
         summary["plots"] = [str(path.relative_to(output_dir)) for path in plots]
 
@@ -881,6 +882,11 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=300,
         help="Raster figure resolution in DPI (ignored for vector formats)",
+    )
+    parser.add_argument(
+        "--interactive-network",
+        action="store_true",
+        help="Also write a draggable/zoomable network.html (good for large graphs)",
     )
     parser.add_argument(
         "--n-iterations",
