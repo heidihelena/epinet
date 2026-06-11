@@ -437,6 +437,21 @@ class ToolkitTests(unittest.TestCase):
             self.assertIn("dist_to_a", assignments.columns)
             self.assertIn("nearest_class_centroid", assignments.columns)
 
+    def test_cluster_labeled_only_skips_scaffold(self):
+        # 12 labeled nodes with features + 6 feature-less scaffold nodes.
+        X = pd.DataFrame(
+            {"f1": list(range(12)) + [0] * 6, "f2": list(range(12)) + [0] * 6},
+            index=[f"n{i}" for i in range(12)] + [f"s{j}" for j in range(6)],
+            dtype=float,
+        )
+        y = pd.Series(
+            ["a"] * 6 + ["b"] * 6 + [""] * 6, index=X.index, name="Outcome"
+        )
+        result = ec.cluster_nodes(X, y=y, n_clusters=2, labeled_only=True)
+        # Only the 12 labeled nodes should appear in the assignments.
+        self.assertEqual(len(result["assignments"]), 12)
+        self.assertTrue(result["assignments"]["ID"].str.startswith("n").all())
+
     def test_cluster_excludes_constant_features(self):
         X = pd.DataFrame(
             {"varies": [0.0, 1.0, 2.0, 3.0], "constant": [5.0, 5.0, 5.0, 5.0]},

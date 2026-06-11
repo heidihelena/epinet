@@ -777,6 +777,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             n_clusters=getattr(args, "n_clusters", 0),
             metric=getattr(args, "distance_metric", "euclidean"),
             random_state=args.random_state,
+            labeled_only=getattr(args, "cluster_labeled_only", False),
         )
         summary["clusters"] = cluster_result["summary"]
 
@@ -850,6 +851,11 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["euclidean", "mahalanobis"],
         default="euclidean",
         help="Centroid distance metric; mahalanobis accounts for feature correlation/scale",
+    )
+    parser.add_argument(
+        "--cluster-labeled-only",
+        action="store_true",
+        help="Cluster only nodes with a non-blank outcome (skip feature-less scaffold nodes)",
     )
     parser.add_argument(
         "--make-plots",

@@ -242,6 +242,25 @@ each class centroid, nearest-centroid prediction), `cluster_centroids.csv`,
 nearest-centroid in-sample accuracy), and `plots/feature_clusters.png` (a PCA
 projection colored by cluster). The nodes whose nearest class centroid disagrees
 with their actual label are the feature-space outliers worth inspecting.
+`--cluster-labeled-only` skips feature-less scaffold nodes (e.g. patient hubs).
+
+## Pulmonary Nodule Cohort Example
+
+A second real-domain example brings the feature-space clustering to lung-nodule
+risk phenotyping, reproducing the published Brock/PanCan, Mayo/Swensen, and
+volume-doubling-time models (NTOG lung-risk tools) to generate a synthetic
+cohort:
+
+- `examples/build_nodule_cohort.py` — generator (synthetic patients/nodules)
+- `examples/nodule_{nodes,edges}.csv`, `examples/nodule_risk_scores.csv`
+- `examples/nodule_cohort_usecase.md` — walkthrough and interpretation
+
+Patients are scaffold hubs; nodules are labeled by risk tier and linked to their
+patient and siblings, so a community split holds whole patients out. Predicting
+risk tier from raw morphology survives that patient-aware split (F1 0.82,
+p ≈ 0.005), and the centroid distances flag the boundary nodules whose phenotype
+disagrees with their Brock threshold — the second opinion the static calculators
+cannot give.
 
 ## Nordic Lung Cancer Quality-Indicator Example
 

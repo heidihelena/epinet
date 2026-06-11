@@ -103,15 +103,31 @@ def cluster_nodes(
     n_clusters: int = 0,
     metric: str = "euclidean",
     random_state: int = 42,
+    labeled_only: bool = False,
 ) -> dict[str, object]:
     """Cluster nodes in feature space and compute centroid distances.
 
     ``n_clusters <= 0`` selects k automatically: the number of outcome classes
     when labels are available, otherwise a silhouette search over 2..8.
 
+    ``labeled_only`` restricts clustering to nodes with a non-blank outcome.
+    Use it when the scaffold nodes carry no meaningful features (e.g. patient
+    hub nodes with empty attributes) and would otherwise form a degenerate
+    cluster.
+
     Returns a dict with ``assignments`` (DataFrame), ``centroids`` (DataFrame),
     and ``summary`` (JSON-serializable dict).
     """
+    if labeled_only:
+        if y is None:
+            raise ValueError("labeled_only requires an outcome series")
+        mask = y.reindex(X.index)
+        keep = mask.notna()
+        if not pd.api.types.is_numeric_dtype(mask):
+            text = mask.astype("string").fillna("").str.strip().str.lower()
+            keep &= ~text.isin(["", "nan", "none"])
+        X = X.loc[keep]
+
     Xz, kept_columns = standardize(X)
     n_samples = Xz.shape[0]
     if n_samples < 2 or not kept_columns:
@@ -120,7 +136,7 @@ def cluster_nodes(
     labeled = None
     if y is not None:
         labeled = y.reindex(X.index)
-        if labeled.dtype == object or str(labeled.dtype) == "string":
+        if not pd.api.types.is_numeric_dtype(labeled):
             blank = labeled.astype("string").fillna("").str.strip().str.lower().isin(["", "nan", "none"])
             labeled = labeled.mask(blank)
 
@@ -213,10 +229,12 @@ def run_clustering(
     n_clusters: int = 0,
     metric: str = "euclidean",
     random_state: int = 42,
+    labeled_only: bool = False,
 ) -> dict[str, object]:
     """Cluster and write node_clusters.csv, cluster_centroids.csv, cluster_summary.json."""
     result = cluster_nodes(
-        X, y=y, n_clusters=n_clusters, metric=metric, random_state=random_state
+        X, y=y, n_clusters=n_clusters, metric=metric,
+        random_state=random_state, labeled_only=labeled_only,
     )
     output_dir.mkdir(parents=True, exist_ok=True)
     result["assignments"].to_csv(output_dir / "node_clusters.csv", index=False)
