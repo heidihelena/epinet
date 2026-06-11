@@ -26,3 +26,6 @@ examples/nlst_provenance.csv
 examples/luna16_nodes.csv
 examples/luna16_edges.csv
 examples/luna16_provenance.csv
+*.egg-info/
+build/
+dist/

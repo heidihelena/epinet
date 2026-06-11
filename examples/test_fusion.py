@@ -37,8 +37,8 @@ from sklearn.model_selection import RepeatedStratifiedKFold
 from sklearn.preprocessing import StandardScaler
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from pathology_validation import load_diagnosis  # noqa: E402
 from score_comparison import auc_ci, auc_diff, build_scores  # noqa: E402
-from pathology_validation import HISTOPATH_METHODS, load_diagnosis  # noqa: E402
 from score_comparison_synthetic import ntog_post_ct  # noqa: E402
 
 

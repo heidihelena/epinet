@@ -9,8 +9,23 @@ import numpy as np
 import pandas as pd
 
 import epinet_cluster as ec
+import epinet_common as ecommon
 import epinet_toolkit as et
 import epinet_viz as ev
+
+
+class CommonHelperTests(unittest.TestCase):
+    def test_blank_label_mask_handles_dtypes(self):
+        # Object dtype with the blank tokens.
+        s = pd.Series(["a", "", "nan", "None", "b", None])
+        self.assertEqual(ecommon.blank_label_mask(s).tolist(),
+                         [False, True, True, True, False, True])
+        # Modern pandas string dtype with a real NA (the bug this guards against).
+        s2 = pd.Series(["x", pd.NA, "y"], dtype="string")
+        self.assertEqual(ecommon.labeled_mask(s2).tolist(), [True, False, True])
+        # Numeric labels are all considered present.
+        s3 = pd.Series([0, 1, 2])
+        self.assertTrue(ecommon.labeled_mask(s3).all())
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "examples"))
 import validate_nodule_models as vnm  # noqa: E402

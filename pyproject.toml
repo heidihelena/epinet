@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "epinet"
+version = "0.1.0"
+description = "General node/edge network analysis toolkit: graph features, semi-supervised outcome modeling, shortest paths, and feature-space centroid clustering."
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.9"
+authors = [{ name = "EpiNet contributors" }]
+keywords = ["network-analysis", "graph", "centroid-clustering", "epidemiology", "quality-indicators"]
+
+dependencies = [
+    "networkx>=2.5",
+    "numpy>=1.19.2",
+    "pandas>=1.1.5",
+    "scikit-learn>=0.24.1",
+    "matplotlib>=3.3.2",
+]
+
+[project.optional-dependencies]
+# Example-only datasets and I/O, kept out of the core install.
+lidc = ["pylidc>=0.2.3"]       # LIDC-IDRI / LUNA16 cohort reconstruction
+excel = ["xlrd>=2.0", "openpyxl>=3.0"]  # reading the TCIA diagnosis spreadsheets
+dev = ["pytest>=7.0", "ruff>=0.4"]
+
+[project.scripts]
+epinet = "epinet_toolkit:main"
+
+[project.urls]
+Homepage = "https://github.com/heidihelena/epinet"
+
+[tool.setuptools]
+# Flat module layout: the toolkit is a small set of top-level modules.
+py-modules = ["epinet_toolkit", "epinet_cluster", "epinet_viz", "epinet_common"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py39"
+# Superseded prototypes, kept for reference only (see README); not maintained.
+extend-exclude = ["epinet-analysis.py", "epinet-analysis-v2.py"]
+
+[tool.ruff.lint]
+extend-select = ["I"]      # import sorting
+ignore = ["E402", "E702"]  # examples import after sys.path setup; compact one-liners allowed

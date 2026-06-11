@@ -25,6 +25,8 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, confusion_matrix, precision_recall_fscore_support
 from sklearn.model_selection import GridSearchCV, GroupShuffleSplit, train_test_split
 
+import epinet_common
+
 
 def split_csv_list(value: str | None) -> list[str]:
     if not value:
@@ -314,10 +316,7 @@ def train_outcome_model(
     # features computed above, but are excluded from supervised training and
     # evaluation. This is the common semi-supervised setting where only some
     # node types carry the label of interest.
-    labeled = y.notna()
-    if not pd.api.types.is_numeric_dtype(y):
-        text = y.astype("string").fillna("").str.strip().str.lower()
-        labeled &= ~text.isin(["", "nan", "none"])
+    labeled = epinet_common.labeled_mask(y)
     n_unlabeled = int((~labeled).sum())
     if not labeled.any():
         raise ValueError("Outcome modeling needs at least one labeled node")

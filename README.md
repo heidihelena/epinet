@@ -44,17 +44,31 @@ clinical or public-health decision support.
 The older `epinet-analysis.py` and `epinet-analysis-v2.py` scripts remain as early prototypes.
 The recommended entry point is now `epinet_toolkit.py`.
 
+## Install
+
+```bash
+pip install -e .            # installs the package + the `epinet` command
+pip install -e ".[dev]"     # also pytest + ruff (for development)
+pip install -e ".[lidc]"    # pylidc, for the LIDC-IDRI / LUNA16 examples
+pip install -e ".[excel]"   # xlrd + openpyxl, for the TCIA diagnosis spreadsheets
+```
+
+`requirements.txt` still lists the core runtime dependencies if you prefer not to
+install the package.
+
 ## Quick Start
 
 ```bash
-pip install -r requirements.txt
-python epinet_toolkit.py \
+epinet \
   --nodes synthetic_nodes.csv \
   --edges synthetic_edges.csv \
   --outcome-column Outcome \
   --target-outcome 1 \
   --output-dir epinet_outputs
 ```
+
+(`epinet ...` is the installed console command; `python epinet_toolkit.py ...`
+works identically without installing.)
 
 This runs the two main lenses side by side:
 
@@ -380,11 +394,15 @@ decisions, add:
 - privacy and governance review
 - human review of any operational recommendations
 
-## Tests
+## Tests and linting
 
 ```bash
-python -m unittest discover -s tests
+python -m unittest discover -s tests   # or: pytest
+ruff check .
 ```
+
+GitHub Actions runs both on every push and pull request across Python
+3.10–3.12 (`.github/workflows/tests.yml`).
 
 ## License
 

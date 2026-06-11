@@ -27,6 +27,8 @@ from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
 from sklearn.preprocessing import StandardScaler
 
+import epinet_common
+
 
 def standardize(X: pd.DataFrame) -> tuple[np.ndarray, list[str]]:
     """Z-score the feature matrix, dropping zero-variance columns.
@@ -121,11 +123,7 @@ def cluster_nodes(
     if labeled_only:
         if y is None:
             raise ValueError("labeled_only requires an outcome series")
-        mask = y.reindex(X.index)
-        keep = mask.notna()
-        if not pd.api.types.is_numeric_dtype(mask):
-            text = mask.astype("string").fillna("").str.strip().str.lower()
-            keep &= ~text.isin(["", "nan", "none"])
+        keep = epinet_common.labeled_mask(y.reindex(X.index))
         X = X.loc[keep]
 
     Xz, kept_columns = standardize(X)
@@ -136,9 +134,7 @@ def cluster_nodes(
     labeled = None
     if y is not None:
         labeled = y.reindex(X.index)
-        if not pd.api.types.is_numeric_dtype(labeled):
-            blank = labeled.astype("string").fillna("").str.strip().str.lower().isin(["", "nan", "none"])
-            labeled = labeled.mask(blank)
+        labeled = labeled.mask(epinet_common.blank_label_mask(labeled))
 
     silhouettes: dict[int, float] = {}
     if n_clusters <= 0:

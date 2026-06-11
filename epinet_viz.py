@@ -26,6 +26,8 @@ import networkx as nx
 import numpy as np
 import pandas as pd
 
+import epinet_common
+
 # Colorblind-friendly cycle (Okabe-Ito) for categorical node outcomes.
 CATEGORY_COLORS = [
     "#0072B2",
@@ -61,8 +63,7 @@ def plot_network(
 
     if outcome_attribute:
         def _normalize(value: object) -> str:
-            text = str(value).strip()
-            return "unlabeled" if text in ("", "nan", "None") else text
+            return "unlabeled" if epinet_common.is_blank_value(value) else str(value).strip()
 
         outcomes = [_normalize(graph.nodes[node].get(outcome_attribute)) for node in graph.nodes()]
         # Blank/NaN outcomes are scaffold nodes (semi-supervised graphs); give
