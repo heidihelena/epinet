@@ -22,6 +22,12 @@ clinical or public-health decision support.
 - Optional RandomForest outcome model using graph features plus numeric node attributes.
 - Iterative model evaluation over repeated train/test splits, reporting the
   mean, standard deviation, and range of each metric instead of a single noisy split.
+- Community-aware splitting (`--split-strategy community`): whole graph
+  communities stay on one side of the split, so scores estimate generalization
+  to unseen regions of the network instead of leaking structure between
+  connected train/test nodes.
+- Label-permutation null model (`--permutation-test N`) with empirical
+  p-values, so observed scores are compared against chance instead of read in isolation.
 - Shortest-path analysis from source nodes to explicit target nodes or to nodes with a target outcome.
 - Per-target coverage summaries — the counterpart to the per-source nearest-target
   table — showing how many sources reach each target and at what distance.
@@ -59,6 +65,7 @@ Generated files include:
 - `model_metrics.json` — primary-split metrics plus an `iteration_summary` block
 - `model_feature_importance.csv` — mean importance across iterations, with `importance_std`
 - `model_iteration_metrics.csv` — one row of metrics per evaluation iteration
+- `model_permutation_metrics.csv` — one row per null-model permutation (with `--permutation-test`)
 - `run_summary.json`
 - `plots/*.png` — see Visualization below
 
@@ -81,6 +88,49 @@ which is exactly what the bundled random synthetic data shows. Use
 `--n-iterations 1` to reproduce the old single-split behavior, or raise it for
 tighter estimates.
 
+## Permutation Null Model
+
+"Near chance" should be measured, not eyeballed. `--permutation-test N` shuffles
+the outcome labels N times and re-evaluates with the same tuned configuration
+and split scheme, producing an empirical null distribution and a one-sided
+p-value per metric:
+
+```bash
+python epinet_toolkit.py --permutation-test 100 --no-run-paths
+```
+
+```json
+"permutation_test": {
+  "n_permutations": 100,
+  "metrics": {
+    "f1_weighted": {"observed_mean": 0.53, "null_mean": 0.50, "null_std": 0.13, "p_value": 0.44}
+  }
+}
+```
+
+A p-value like 0.44 means shuffled labels score as well as the real ones almost
+half the time — the features carry no detectable signal. On the bundled random
+synthetic data this is the correct conclusion; on real data, demand a small
+p-value before trusting any importance ranking.
+
+## Community-Aware Splitting
+
+Random train/test splits assume independent samples, but connected nodes are
+not independent: a node's graph features encode information about neighbors
+that may sit in the test set. `--split-strategy community` detects communities
+(greedy modularity) and keeps each one entirely in train or test:
+
+```bash
+python epinet_toolkit.py --split-strategy community --n-iterations 10
+```
+
+Scores are typically lower and more variable than with random splits — that is
+the honest estimate of how the model generalizes to an unseen region of the
+network. Stratification is disabled in this mode (group splits and class
+stratification are incompatible), and if the graph collapses into a single
+community the run falls back to random splits and records a `split_note` in
+the metrics.
+
 ## Visualization
 
 Every run writes figures to `<output-dir>/plots/` (disable with `--no-make-plots`):
@@ -91,6 +141,7 @@ Every run writes figures to `<output-dir>/plots/` (disable with `--no-make-plots
 - `feature_importance.png` — error bars show cross-iteration variability
 - `metric_stability.png` — box plot of metrics across evaluation iterations
 - `confusion_matrix.png` — held-out test set of the primary split
+- `permutation_null.png` — null distribution vs observed F1 (with `--permutation-test`)
 
 ## Shortest-Path Examples
 

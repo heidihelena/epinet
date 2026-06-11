@@ -166,6 +166,36 @@ def plot_metric_stability(iteration_metrics: pd.DataFrame, output_path: Path) ->
     return _save(fig, output_path)
 
 
+def plot_permutation_null(
+    permutation_metrics: pd.DataFrame,
+    observed_mean: float,
+    p_value: float,
+    output_path: Path,
+    *,
+    metric: str = "f1_weighted",
+) -> Path:
+    """Histogram of the label-permutation null distribution vs the observed score."""
+    fig, ax = plt.subplots(figsize=(7, 5))
+    ax.hist(
+        permutation_metrics[metric],
+        bins=min(20, max(5, len(permutation_metrics) // 5)),
+        color=CATEGORY_COLORS[0],
+        alpha=0.8,
+        label=f"null ({len(permutation_metrics)} permuted outcomes)",
+    )
+    ax.axvline(
+        observed_mean,
+        color="red",
+        linewidth=2,
+        label=f"observed mean = {observed_mean:.3f}",
+    )
+    ax.set_xlabel(metric)
+    ax.set_ylabel("Permutations")
+    ax.set_title(f"Permutation test: {metric} (p = {p_value:.3f})")
+    ax.legend()
+    return _save(fig, output_path)
+
+
 def plot_confusion_matrix(
     matrix: list[list[int]],
     classes: list[str],
@@ -204,6 +234,7 @@ def generate_run_plots(
     metrics: dict | None = None,
     importance: pd.DataFrame | None = None,
     iteration_metrics: pd.DataFrame | None = None,
+    permutation_metrics: pd.DataFrame | None = None,
     seed: int = 42,
 ) -> list[Path]:
     """Render every figure supported by the available run artifacts."""
@@ -242,6 +273,21 @@ def generate_run_plots(
     if iteration_metrics is not None and len(iteration_metrics) > 1:
         written.append(
             plot_metric_stability(iteration_metrics, plots_dir / "metric_stability.png")
+        )
+    if (
+        permutation_metrics is not None
+        and not permutation_metrics.empty
+        and metrics is not None
+        and "permutation_test" in metrics
+    ):
+        f1_summary = metrics["permutation_test"]["metrics"]["f1_weighted"]
+        written.append(
+            plot_permutation_null(
+                permutation_metrics,
+                f1_summary["observed_mean"],
+                f1_summary["p_value"],
+                plots_dir / "permutation_null.png",
+            )
         )
 
     return written

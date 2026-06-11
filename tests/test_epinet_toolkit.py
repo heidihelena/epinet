@@ -227,6 +227,8 @@ class ToolkitTests(unittest.TestCase):
             run_paths=True,
             make_plots=False,
             n_iterations=1,
+            split_strategy="random",
+            permutation_test=0,
             test_size=0.2,
             random_state=42,
         )
@@ -284,6 +286,75 @@ class ToolkitTests(unittest.TestCase):
             self.assertEqual(written, expected)
             for plot in summary["plots"]:
                 self.assertGreater((out / plot).stat().st_size, 0)
+
+    def _two_cluster_graph(self):
+        # Two triangles joined by a single bridge edge.
+        nodes = pd.DataFrame([{"ID": n} for n in ["A", "B", "C", "D", "E", "F"]])
+        edges = pd.DataFrame(
+            [
+                {"SourceID": "A", "TargetID": "B"},
+                {"SourceID": "B", "TargetID": "C"},
+                {"SourceID": "C", "TargetID": "A"},
+                {"SourceID": "D", "TargetID": "E"},
+                {"SourceID": "E", "TargetID": "F"},
+                {"SourceID": "F", "TargetID": "D"},
+                {"SourceID": "C", "TargetID": "D"},
+            ]
+        )
+        return et.build_graph(nodes, edges)
+
+    def test_community_labels_separate_two_clusters(self):
+        labels = et.community_labels(self._two_cluster_graph())
+        self.assertEqual(labels[["A", "B", "C"]].nunique(), 1)
+        self.assertEqual(labels[["D", "E", "F"]].nunique(), 1)
+        self.assertNotEqual(labels["A"], labels["D"])
+
+    def test_group_split_keeps_communities_intact(self):
+        labels = et.community_labels(self._two_cluster_graph())
+        X = pd.DataFrame({"x": range(len(labels))}, index=labels.index)
+        y = pd.Series([0, 1] * 3, index=labels.index)
+        train_idx, test_idx = et._split_indices(
+            X, y, test_size=0.5, random_state=0, stratify_ok=False, groups=labels
+        )
+        train_groups = set(labels.iloc[train_idx])
+        test_groups = set(labels.iloc[test_idx])
+        self.assertTrue(train_groups)
+        self.assertTrue(test_groups)
+        self.assertEqual(train_groups & test_groups, set())
+
+    def test_community_split_strategy_is_recorded(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            out = root / "out"
+            args = self._synthetic_run_args(
+                root, out, n_iterations=2, split_strategy="community"
+            )
+            summary = et.run(args)
+            self.assertEqual(summary["model"]["split_strategy"], "community")
+            self.assertGreaterEqual(summary["model"]["n_groups"], 2)
+
+    def test_permutation_test_reports_null_distribution(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            out = root / "out"
+            args = self._synthetic_run_args(
+                root, out, n_iterations=2, permutation_test=10, make_plots=True
+            )
+            summary = et.run(args)
+
+            test = summary["model"]["permutation_test"]
+            self.assertEqual(test["n_permutations"], 10)
+            f1 = test["metrics"]["f1_weighted"]
+            self.assertGreater(f1["p_value"], 0.0)
+            self.assertLessEqual(f1["p_value"], 1.0)
+            self.assertIn("observed_mean", f1)
+            self.assertIn("null_mean", f1)
+
+            null_rows = pd.read_csv(out / "model_permutation_metrics.csv")
+            self.assertEqual(len(null_rows), 10)
+
+            plot_names = {Path(p).name for p in summary["plots"]}
+            self.assertIn("permutation_null.png", plot_names)
 
     def test_plot_network_handles_missing_outcome(self):
         graph = et.build_graph(

@@ -23,7 +23,7 @@ import pandas as pd
 from sklearn.base import clone
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, confusion_matrix, precision_recall_fscore_support
-from sklearn.model_selection import GridSearchCV, train_test_split
+from sklearn.model_selection import GridSearchCV, GroupShuffleSplit, train_test_split
 
 
 def split_csv_list(value: str | None) -> list[str]:
@@ -158,6 +158,45 @@ def numeric_node_attributes(
     return numeric.set_index(id_column)
 
 
+def community_labels(graph: nx.Graph) -> pd.Series:
+    """Assign each node a community id via greedy modularity maximization.
+
+    Used for community-aware train/test splitting: connected nodes share
+    information through their graph features, so splitting them across train
+    and test leaks structure. Keeping whole communities on one side of the
+    split gives a more honest estimate of generalization to unseen regions
+    of the network.
+    """
+    undirected = graph.to_undirected()
+    labels: dict[str, int] = {}
+    for i, community in enumerate(nx.community.greedy_modularity_communities(undirected)):
+        for node in community:
+            labels[str(node)] = i
+    return pd.Series(labels, name="community")
+
+
+def _split_indices(
+    X: pd.DataFrame,
+    y: pd.Series,
+    *,
+    test_size: float,
+    random_state: int,
+    stratify_ok: bool,
+    groups: pd.Series | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    if groups is not None:
+        splitter = GroupShuffleSplit(n_splits=1, test_size=test_size, random_state=random_state)
+        return next(splitter.split(X, y, groups))
+    indices = np.arange(len(X))
+    train_idx, test_idx = train_test_split(
+        indices,
+        test_size=test_size,
+        random_state=random_state,
+        stratify=y if stratify_ok else None,
+    )
+    return train_idx, test_idx
+
+
 def _split_and_score(
     X: pd.DataFrame,
     y: pd.Series,
@@ -166,14 +205,18 @@ def _split_and_score(
     test_size: float,
     random_state: int,
     stratify_ok: bool,
+    groups: pd.Series | None = None,
 ) -> tuple[RandomForestClassifier, dict[str, object], pd.Series, pd.Series]:
-    X_train, X_test, y_train, y_test = train_test_split(
+    train_idx, test_idx = _split_indices(
         X,
         y,
         test_size=test_size,
         random_state=random_state,
-        stratify=y if stratify_ok else None,
+        stratify_ok=stratify_ok,
+        groups=groups,
     )
+    X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
+    y_train, y_test = y.iloc[train_idx], y.iloc[test_idx]
     fitted = clone(model).set_params(random_state=random_state).fit(X_train, y_train)
     predictions = fitted.predict(X_test)
     precision, recall, f1, _ = precision_recall_fscore_support(
@@ -204,6 +247,8 @@ def train_outcome_model(
     test_size: float = 0.2,
     random_state: int = 42,
     n_iterations: int = 1,
+    groups: pd.Series | None = None,
+    n_permutations: int = 0,
 ) -> dict[str, object]:
     """Fit and evaluate the outcome model, optionally over repeated splits.
 
@@ -214,13 +259,27 @@ def train_outcome_model(
     Hyperparameters are tuned once on the primary split and held fixed across
     iterations so the loop measures split variance, not tuning variance.
 
+    ``groups`` (a node-id -> community-id Series, e.g. from
+    ``community_labels``) switches every split to GroupShuffleSplit so train
+    and test never share a community, avoiding leakage through graph features.
+
+    ``n_permutations > 0`` runs a label-permutation null model: the outcome is
+    shuffled and re-evaluated with the same tuned configuration and split
+    scheme. The summary reports an empirical one-sided p-value per metric —
+    the chance that shuffled labels score at least as well as the observed
+    mean. If the observed metrics sit inside the null distribution, the
+    features carry no detectable signal for the outcome.
+
     Returns a dict with keys ``metrics`` (JSON-serializable summary),
-    ``importance`` (DataFrame), and ``iteration_metrics`` (DataFrame).
+    ``importance``, ``iteration_metrics``, and ``permutation_metrics``
+    (DataFrames; the last is None unless permutations were requested).
     """
     if outcome_column not in nodes.columns:
         raise ValueError(f"Outcome column not found: {outcome_column}")
     if n_iterations < 1:
         raise ValueError("n_iterations must be at least 1")
+    if n_permutations < 0:
+        raise ValueError("n_permutations must be non-negative")
 
     graph_features = features.set_index("ID")
     node_numeric = numeric_node_attributes(
@@ -238,16 +297,26 @@ def train_outcome_model(
     if len(class_counts) < 2:
         raise ValueError("Outcome modeling needs at least two outcome classes")
 
-    stratify_ok = bool(class_counts.min() >= 2)
+    split_note: str | None = None
+    if groups is not None:
+        groups = groups.reindex(X.index)
+        groups = groups.fillna(-1)
+        if groups.nunique() < 2:
+            split_note = "community split requested but graph has a single community; using random splits"
+            groups = None
+
+    stratify_ok = bool(class_counts.min() >= 2) and groups is None
 
     # Tune hyperparameters once on the primary split.
-    X_train, X_test, y_train, y_test = train_test_split(
+    train_idx, _ = _split_indices(
         X,
         y,
         test_size=test_size,
         random_state=random_state,
-        stratify=y if stratify_ok else None,
+        stratify_ok=stratify_ok,
+        groups=groups,
     )
+    X_train, y_train = X.iloc[train_idx], y.iloc[train_idx]
     min_train_class = y_train.value_counts().min()
     cv = min(5, int(min_train_class))
     base_model = RandomForestClassifier(random_state=random_state, n_jobs=1)
@@ -281,6 +350,7 @@ def train_outcome_model(
             test_size=test_size,
             random_state=random_state + i,
             stratify_ok=stratify_ok,
+            groups=groups,
         )
         row["iteration"] = i
         iteration_rows.append(row)
@@ -299,12 +369,17 @@ def train_outcome_model(
         {
             "best_params": best_params,
             "n_iterations": n_iterations,
+            "split_strategy": "community" if groups is not None else "random",
             "train_rows": int(iteration_metrics["train_rows"].iloc[0]),
             "test_rows": int(iteration_metrics["test_rows"].iloc[0]),
             "classes": [str(c) for c in primary_fit.classes_],
             "confusion_matrix": confusion_matrix(primary_truth, primary_predictions).tolist(),
         }
     )
+    if groups is not None:
+        metrics["n_groups"] = int(groups.nunique())
+    if split_note:
+        metrics["split_note"] = split_note
     if n_iterations > 1:
         metrics["iteration_summary"] = {
             column: {
@@ -327,16 +402,56 @@ def train_outcome_model(
         importance["importance_std"] = importance_array.std(axis=0, ddof=1)
     importance = importance.sort_values("importance", ascending=False)
 
+    # Permutation null model: shuffle the outcome and re-evaluate with the
+    # same tuned configuration and split scheme.
+    permutation_metrics: pd.DataFrame | None = None
+    if n_permutations > 0:
+        rng = np.random.default_rng(random_state)
+        permutation_rows: list[dict[str, object]] = []
+        for i in range(n_permutations):
+            y_permuted = pd.Series(rng.permutation(y.to_numpy()), index=y.index, name=y.name)
+            _, row, _, _ = _split_and_score(
+                X,
+                y_permuted,
+                tuned_model,
+                test_size=test_size,
+                random_state=random_state + i,
+                stratify_ok=stratify_ok,
+                groups=groups,
+            )
+            row["permutation"] = i
+            permutation_rows.append(row)
+        permutation_metrics = pd.DataFrame(permutation_rows)
+        metrics["permutation_test"] = {
+            "n_permutations": n_permutations,
+            "metrics": {
+                column: {
+                    "observed_mean": float(iteration_metrics[column].mean()),
+                    "null_mean": float(permutation_metrics[column].mean()),
+                    "null_std": float(permutation_metrics[column].std(ddof=1)),
+                    # Empirical one-sided p-value with add-one smoothing.
+                    "p_value": float(
+                        (1 + int((permutation_metrics[column] >= iteration_metrics[column].mean()).sum()))
+                        / (n_permutations + 1)
+                    ),
+                }
+                for column in metric_columns
+            },
+        }
+
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "model_metrics.json").write_text(json.dumps(metrics, indent=2) + "\n")
     importance.to_csv(output_dir / "model_feature_importance.csv", index=False)
     if n_iterations > 1:
         iteration_metrics.to_csv(output_dir / "model_iteration_metrics.csv", index=False)
+    if permutation_metrics is not None:
+        permutation_metrics.to_csv(output_dir / "model_permutation_metrics.csv", index=False)
 
     return {
         "metrics": metrics,
         "importance": importance,
         "iteration_metrics": iteration_metrics,
+        "permutation_metrics": permutation_metrics,
     }
 
 
@@ -587,6 +702,9 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     if args.run_model:
         if not args.outcome_column:
             raise ValueError("Outcome modeling needs --outcome-column")
+        groups = None
+        if getattr(args, "split_strategy", "random") == "community":
+            groups = community_labels(graph)
         model_result = train_outcome_model(
             nodes,
             features,
@@ -596,6 +714,8 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             test_size=args.test_size,
             random_state=args.random_state,
             n_iterations=getattr(args, "n_iterations", 1),
+            groups=groups,
+            n_permutations=getattr(args, "permutation_test", 0),
         )
         summary["model"] = model_result["metrics"]
 
@@ -611,6 +731,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             metrics=model_result["metrics"] if model_result else None,
             importance=model_result["importance"] if model_result else None,
             iteration_metrics=model_result["iteration_metrics"] if model_result else None,
+            permutation_metrics=model_result["permutation_metrics"] if model_result else None,
             seed=args.random_state,
         )
         summary["plots"] = [str(path.relative_to(output_dir)) for path in plots]
@@ -663,6 +784,27 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Repeated train/test evaluations of the outcome model; >1 reports "
             "mean/std/min/max per metric to expose split-to-split variance"
+        ),
+    )
+    parser.add_argument(
+        "--split-strategy",
+        choices=["random", "community"],
+        default="random",
+        help=(
+            "random: stratified random train/test splits; community: detect graph "
+            "communities and keep each one entirely in train or test, so scores "
+            "estimate generalization to unseen regions of the network"
+        ),
+    )
+    parser.add_argument(
+        "--permutation-test",
+        type=int,
+        default=0,
+        metavar="N",
+        help=(
+            "Run N label-permutation null evaluations and report an empirical "
+            "p-value per metric; if observed scores sit inside the null "
+            "distribution, the features carry no detectable outcome signal"
         ),
     )
     parser.add_argument("--test-size", type=float, default=0.2)
