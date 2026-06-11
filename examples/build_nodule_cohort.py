@@ -95,6 +95,31 @@ def volume_doubling_time(diameter_mm: float, prior_diameter_mm: float, days: flo
     return days * math.log(2) / math.log(volume_ratio)
 
 
+def latent_malignancy_prob(*, diameter_mm, spiculation, upper_lobe, age,
+                           ever_smoker, nodule_type, family_history) -> float:
+    """An INDEPENDENT synthetic ground-truth probability of malignancy.
+
+    Deliberately a *different functional form* from Brock and Mayo (saturating
+    sqrt-diameter rather than Brock's inverse-sqrt or Mayo's linear term, and its
+    own weights) so that no score has privileged access to the label. It shares
+    predictors with the scores only because they describe the same biology. With
+    Bernoulli sampling this yields a noisy label none of the scores can fit
+    exactly -- a fair, if generator-dependent, target.
+    """
+    x = (
+        -4.2
+        + 0.62 * math.sqrt(diameter_mm)
+        + 0.85 * spiculation
+        + 0.45 * upper_lobe
+        + 0.035 * (age - 60)
+        + 0.55 * ever_smoker
+        + 0.7 * (nodule_type == "part_solid")
+        - 0.5 * (nodule_type == "non_solid")
+        + 0.45 * family_history
+    )
+    return 1.0 / (1.0 + math.exp(-x))
+
+
 def risk_tier(brock_p: float) -> str:
     # Illustrative three-band scheme for this demo (NOT a clinical standard;
     # BTS/Fleischner use a single Brock action threshold around 10%).
@@ -107,6 +132,9 @@ def risk_tier(brock_p: float) -> str:
 
 def sample_cohort(n_patients: int = 70, seed: int = 7):
     rng = np.random.default_rng(seed)
+    # Independent stream for the latent label so it does not perturb the cohort
+    # sampling (features stay identical whether or not the label is drawn).
+    latent_rng = np.random.default_rng(seed + 1000)
     patients, nodules = [], []
 
     for p in range(n_patients):
@@ -151,8 +179,15 @@ def sample_cohort(n_patients: int = 70, seed: int = 7):
                 age=age, ever_smoker=ever_smoker, prior_cancer=prior_cancer,
                 diameter_mm=diameter, spiculation=spiculation, upper_lobe=upper_lobe,
             )
+            p_true = latent_malignancy_prob(
+                diameter_mm=diameter, spiculation=spiculation, upper_lobe=upper_lobe,
+                age=age, ever_smoker=ever_smoker, nodule_type=nodule_type,
+                family_history=family_history,
+            )
+            latent_malignant = int(latent_rng.random() < p_true)
             nodules.append({
                 "nid": f"ND_{p:03d}_{k}", "pid": pid, "tier": risk_tier(brock),
+                "LatentMalignant": latent_malignant,
                 "DiameterMm": round(diameter, 1),
                 "TypePartSolid": int(nodule_type == "part_solid"),
                 "TypeNonSolid": int(nodule_type == "non_solid"),
@@ -205,20 +240,24 @@ def write_cohort(out_dir: Path) -> None:
                     w.writerow({"SourceID": siblings[i], "TargetID": siblings[j],
                                 "Relationship": "same_patient", "Weight": 1.0})
 
-    # Provenance: the computed risk scores, kept out of the modelled features.
+    # Provenance: the computed risk scores + independent latent ground truth,
+    # kept out of the modelled features.
     with (out_dir / "nodule_risk_scores.csv").open("w", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=["ID", "NoduleType", "DiameterMm",
-                                           "BrockProb", "MayoProb", "GrowthVDTdays", "RiskTier"])
+                                           "BrockProb", "MayoProb", "GrowthVDTdays",
+                                           "RiskTier", "LatentMalignant"])
         w.writeheader()
         for nd in nodules:
             w.writerow({"ID": nd["nid"], "NoduleType": nd["NoduleType"],
                         "DiameterMm": nd["DiameterMm"], "BrockProb": nd["BrockProb"],
                         "MayoProb": nd["MayoProb"], "GrowthVDTdays": nd["GrowthVDTdays"],
-                        "RiskTier": nd["tier"]})
+                        "RiskTier": nd["tier"], "LatentMalignant": nd["LatentMalignant"]})
 
     tiers = [nd["tier"] for nd in nodules]
+    lat = [nd["LatentMalignant"] for nd in nodules]
     print(f"Wrote {len(patients)} patients and {len(nodules)} nodules.")
     print("Risk tiers:", {t: tiers.count(t) for t in ("low", "intermediate", "high")})
+    print(f"Latent malignant prevalence: {sum(lat)}/{len(lat)} ({100*sum(lat)/len(lat):.1f}%)")
 
 
 if __name__ == "__main__":

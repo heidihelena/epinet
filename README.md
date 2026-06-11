@@ -302,6 +302,16 @@ established size and radiologist-gestalt benchmarks (AUC ~0.72–0.75, differenc
 not significant) — added morphology buys no discrimination over diameter alone
 here. See `examples/score_comparison_usecase.md`.
 
+`examples/score_comparison_synthetic.py` runs the full Brock-vs-Mayo-vs-NTOG
+comparison on the synthetic cohort (which has the demographics LIDC lacks),
+against an *independent* latent malignancy label so the test isn't circular. The
+three scores are statistically indistinguishable (AUC 0.70–0.72, all differences
+NS) and strongly rank-concordant (0.66–0.87); NTOG's growth domain demonstrably
+re-ranks fast-growing nodules (r = 0.24). The honest caveat is built in: the AUC
+ranking is a property of the chosen generator (whose truth has no growth term),
+so it demonstrates machinery, not validity. See
+`examples/score_comparison_synthetic_usecase.md`.
+
 ## Nordic Lung Cancer Quality-Indicator Example
 
 A larger, real-domain example models lung cancer pathway quality indicators
