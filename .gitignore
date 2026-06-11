@@ -3,6 +3,7 @@ __pycache__/
 
 epinet_outputs/
 examples/citematch_outputs/
+examples/nordic_qi_outputs/
 trained_model.joblib
 confusion_matrix.png
 

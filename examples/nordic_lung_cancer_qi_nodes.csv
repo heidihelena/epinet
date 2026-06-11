@@ -1,0 +1,32 @@
+ID,NodeType,Outcome,Label,PathwayStage,OutcomeType,RequiresLinkage,ModernContent,InvasiveData,FiveYearSurvival,DedicatedRegistry
+DK_DLCR,Country,,Denmark (DLCR),,,,,,24.0,1
+SE_SLCR,Country,,Sweden (Lungcancerregistret),,,,,,24.0,1
+NO_NLCR,Country,,Norway (lung cancer quality register),,,,,,27.0,1
+FI_FICAN,Country,,Finland (Finnish Cancer Registry / FICAN),,,,,,17.0,0
+IS_ICR,Country,,Iceland (Icelandic Cancer Registry),,,,,,22.0,0
+DS_ClinicalRegistry,DataSource,,Clinical lung cancer quality registry,,,,,,,
+DS_CancerRegistry,DataSource,,Population cancer registry,,,,,,,
+DS_PathologyRegistry,DataSource,,Pathology registry (margin / morphology),,,,,,,
+DS_HospitalDischarge,DataSource,,Hospital discharge / procedure codes,,,,,,,
+DS_MortalityLinkage,DataSource,,Civil registration / cause-of-death linkage,,,,,,,
+DS_RadiotherapyRegistry,DataSource,,Radiotherapy registry / module,,,,,,,
+DS_SystemicTherapyData,DataSource,,Systemic therapy administration / prescription data,,,,,,,
+DS_PROMmodule,DataSource,,Patient-reported outcome (PROM) module,,,,,,,
+DS_PalliativeServices,DataSource,,Specialist palliative care service data,,,,,,,
+IND_StageCompleteness,Indicator,partial,Stage completeness (valid stage recorded),Staging,0,0,0,0,,
+IND_TimeToDiagnosis,Indicator,partial,Time to diagnosis (referral to diagnosis),Diagnosis,0,0,0,0,,
+IND_TimeToTreatment,Indicator,partial,Time to treatment (diagnosis to first treatment),Timeliness,0,0,0,0,,
+IND_MDT_Documented,Indicator,partial,MDT discussion documented,TreatmentPlanning,0,0,0,0,,
+IND_SurgeryRate_EarlyNSCLC,Indicator,partial,Surgery rate in early-stage NSCLC (I-II),Surgery,0,0,0,0,,
+IND_R0_ResectionRate,Indicator,gap,R0 resection rate (clear margin),Surgery,1,0,0,1,,
+IND_30dPostopMortality,Indicator,partial,30-day postoperative mortality,SurgeryOutcomes,1,1,0,0,,
+IND_PostopComplications,Indicator,gap,Postoperative complications / reoperation,Complications,1,0,0,0,,
+IND_RadiotherapyUtil,Indicator,partial,Radiotherapy utilisation,Radiotherapy,0,0,0,0,,
+IND_SystemicTherapy_IV,Indicator,partial,Systemic therapy utilisation in stage IV NSCLC,SystemicTherapy,0,0,1,0,,
+IND_CurativeIntentRate,Indicator,partial,Curative-intent treatment rate,Treatment,0,0,0,0,,
+IND_SmokingStatusRecorded,Indicator,partial,Smoking status recorded,Diagnosis,0,0,0,0,,
+IND_EarlyMortality_30_90,Indicator,broad,Early mortality after diagnosis (30/90-day),Outcomes,1,1,0,0,,
+IND_1yrOS,Indicator,broad,1-year overall survival after diagnosis,Outcomes,1,1,0,0,,
+IND_5yrOS,Indicator,broad,5-year overall survival after diagnosis,Outcomes,1,1,0,0,,
+IND_PROM_Capture,Indicator,partial,PROM capture / completion,PROMs,0,0,1,0,,
+IND_PalliativeReferralTiming,Indicator,gap,Palliative care referral timing,PalliativeCare,0,1,0,0,,

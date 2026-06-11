@@ -60,15 +60,25 @@ def plot_network(
     fig, ax = plt.subplots(figsize=(10, 8))
 
     if outcome_attribute:
-        outcomes = [str(graph.nodes[node].get(outcome_attribute, "")) for node in graph.nodes()]
-        categories = sorted(set(outcomes))
+        def _normalize(value: object) -> str:
+            text = str(value).strip()
+            return "unlabeled" if text in ("", "nan", "None") else text
+
+        outcomes = [_normalize(graph.nodes[node].get(outcome_attribute)) for node in graph.nodes()]
+        # Blank/NaN outcomes are scaffold nodes (semi-supervised graphs); give
+        # them a neutral gray and sort them last so labeled classes keep the
+        # categorical palette.
+        labeled_categories = sorted({o for o in outcomes if o != "unlabeled"})
         color_map = {
             category: CATEGORY_COLORS[i % len(CATEGORY_COLORS)]
-            for i, category in enumerate(categories)
+            for i, category in enumerate(labeled_categories)
         }
+        if "unlabeled" in outcomes:
+            color_map["unlabeled"] = "#BBBBBB"
         node_colors = [color_map[outcome] for outcome in outcomes]
-        for category in categories:
-            ax.scatter([], [], c=color_map[category], label=f"{outcome_attribute}={category}")
+        for category in labeled_categories + (["unlabeled"] if "unlabeled" in outcomes else []):
+            label = "unlabeled (scaffold)" if category == "unlabeled" else f"{outcome_attribute}={category}"
+            ax.scatter([], [], c=color_map[category], label=label)
         ax.legend(loc="upper left", fontsize=8)
     else:
         node_colors = CATEGORY_COLORS[0]

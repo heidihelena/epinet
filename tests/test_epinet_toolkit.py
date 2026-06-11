@@ -356,6 +356,44 @@ class ToolkitTests(unittest.TestCase):
             plot_names = {Path(p).name for p in summary["plots"]}
             self.assertIn("permutation_null.png", plot_names)
 
+    def test_partially_labeled_outcome_excludes_scaffold(self):
+        # Two labeled classes among "indicator" nodes plus unlabeled scaffold.
+        rng = np.random.default_rng(1)
+        node_rows = []
+        for i in range(20):
+            node_rows.append({"ID": f"I{i}", "Outcome": "a" if i % 2 else "b",
+                              "Value": float(rng.random())})
+        for j in range(8):
+            node_rows.append({"ID": f"S{j}", "Outcome": "", "Value": float(rng.random())})
+        nodes = pd.DataFrame(node_rows)
+        edges = pd.DataFrame(
+            [{"SourceID": f"I{i}", "TargetID": f"S{i % 8}"} for i in range(20)]
+            + [{"SourceID": f"S{j}", "TargetID": f"S{(j + 1) % 8}"} for j in range(8)]
+        )
+        graph = et.build_graph(nodes, edges)
+        features = et.generate_graph_features(graph)
+        with tempfile.TemporaryDirectory() as td:
+            result = et.train_outcome_model(
+                nodes, features, id_column="ID", outcome_column="Outcome",
+                output_dir=Path(td), n_iterations=3,
+            )
+            metrics = result["metrics"]
+            self.assertEqual(metrics["labeled_rows"], 20)
+            self.assertEqual(metrics["unlabeled_excluded"], 8)
+            self.assertEqual(set(metrics["classes"]), {"a", "b"})
+
+    def test_plot_network_marks_unlabeled_scaffold(self):
+        nodes = pd.DataFrame(
+            [{"ID": "A", "Outcome": "broad"}, {"ID": "B", "Outcome": ""},
+             {"ID": "C", "Outcome": "gap"}]
+        )
+        edges = pd.DataFrame([{"SourceID": "A", "TargetID": "B"},
+                              {"SourceID": "B", "TargetID": "C"}])
+        graph = et.build_graph(nodes, edges)
+        with tempfile.TemporaryDirectory() as td:
+            path = ev.plot_network(graph, Path(td) / "net.png", outcome_attribute="Outcome")
+            self.assertGreater(path.stat().st_size, 0)
+
     def test_plot_network_handles_missing_outcome(self):
         graph = et.build_graph(
             pd.DataFrame([{"ID": "A"}, {"ID": "B"}]),

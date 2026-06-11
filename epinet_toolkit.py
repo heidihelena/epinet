@@ -259,6 +259,11 @@ def train_outcome_model(
     Hyperparameters are tuned once on the primary split and held fixed across
     iterations so the loop measures split variance, not tuning variance.
 
+    Nodes whose outcome is blank/NaN are treated as unlabeled scaffold: they
+    contribute to the graph features but are excluded from training and
+    evaluation (semi-supervised setting). The counts are reported as
+    ``labeled_rows`` and ``unlabeled_excluded``.
+
     ``groups`` (a node-id -> community-id Series, e.g. from
     ``community_labels``) switches every split to GroupShuffleSplit so train
     and test never share a community, avoiding leakage through graph features.
@@ -290,6 +295,21 @@ def train_outcome_model(
     X = graph_features.join(node_numeric, how="left").fillna(0)
 
     y = nodes.assign(**{id_column: nodes[id_column].astype(str)}).set_index(id_column)[outcome_column]
+
+    # Partially-labeled graphs: nodes with a blank/NaN outcome are scaffold
+    # (e.g. infrastructure or context nodes). They still shaped the graph
+    # features computed above, but are excluded from supervised training and
+    # evaluation. This is the common semi-supervised setting where only some
+    # node types carry the label of interest.
+    labeled = y.notna()
+    if not pd.api.types.is_numeric_dtype(y):
+        text = y.astype("string").fillna("").str.strip().str.lower()
+        labeled &= ~text.isin(["", "nan", "none"])
+    n_unlabeled = int((~labeled).sum())
+    if not labeled.any():
+        raise ValueError("Outcome modeling needs at least one labeled node")
+    y = y[labeled]
+    X = X.loc[y.index]
     if y.dtype == "object":
         y = y.astype("category")
 
@@ -370,6 +390,8 @@ def train_outcome_model(
             "best_params": best_params,
             "n_iterations": n_iterations,
             "split_strategy": "community" if groups is not None else "random",
+            "labeled_rows": int(len(y)),
+            "unlabeled_excluded": n_unlabeled,
             "train_rows": int(iteration_metrics["train_rows"].iloc[0]),
             "test_rows": int(iteration_metrics["test_rows"].iloc[0]),
             "classes": [str(c) for c in primary_fit.classes_],
