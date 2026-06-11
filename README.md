@@ -312,6 +312,16 @@ ranking is a property of the chosen generator (whose truth has no growth term),
 so it demonstrates machinery, not validity. See
 `examples/score_comparison_synthetic_usecase.md`.
 
+`examples/test_fusion.py` asks whether *combining* tests beats the best single
+one, on both cohorts, with a label-free centroid fusion and a cross-validated
+logistic fusion. The honest answer here is no: the centroid average ties the best
+single test in both cohorts, the fitted logistic combination overfits and does
+worse (significantly so on real tissue), and the cases where tests disagree are
+where discrimination collapses rather than where fusion rescues. The tests are
+too rank-concordant to carry complementary signal; real fusion gains need a
+larger cohort with genuinely orthogonal modalities. See
+`examples/test_fusion_usecase.md`.
+
 ## Nordic Lung Cancer Quality-Indicator Example
 
 A larger, real-domain example models lung cancer pathway quality indicators
