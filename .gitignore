@@ -5,6 +5,11 @@ epinet_outputs/
 examples/citematch_outputs/
 examples/nordic_qi_outputs/
 examples/nodule_outputs/
+examples/lidc_outputs/
+# LIDC-IDRI derived tables are regenerated from pylidc (see build_lidc_cohort.py)
+examples/lidc_nodes.csv
+examples/lidc_edges.csv
+examples/lidc_provenance.csv
 trained_model.joblib
 confusion_matrix.png
 

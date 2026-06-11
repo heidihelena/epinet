@@ -260,7 +260,20 @@ patient and siblings, so a community split holds whole patients out. Predicting
 risk tier from raw morphology survives that patient-aware split (F1 0.82,
 p ≈ 0.005), and the centroid distances flag the boundary nodules whose phenotype
 disagrees with their Brock threshold — the second opinion the static calculators
-cannot give.
+cannot give. The coefficient port is validated against the source formula and
+the published odds ratios by `examples/validate_nodule_models.py`.
+
+### Real LIDC-IDRI cohort
+
+`examples/build_lidc_cohort.py` runs the same pipeline on real LIDC-IDRI
+radiologist annotations (via `pip install pylidc`, no DICOMs needed): 875 scans,
+2651 nodules labeled by median-reader malignancy tier. It is deliberately biased
+data (subjective labels, a dominant "indeterminate" hedge tier, 29% of nodules
+with ≥2-point inter-reader disagreement). Morphology predicts the tier under a
+scan-aware split (F1 0.70, p ≈ 0.01); the model's errors funnel entirely through
+the indeterminate middle (it never confuses benign with suspicious), and reader
+disagreement turns out largely orthogonal to feature-space ambiguity. See
+`examples/lidc_cohort_usecase.md`.
 
 ## Nordic Lung Cancer Quality-Indicator Example
 
