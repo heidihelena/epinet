@@ -1146,6 +1146,75 @@ class FederatedContestabilityTests(unittest.TestCase):
         self.assertLess(diff, 1e-6)
 
 
+class FederatedEgressTests(unittest.TestCase):
+    """The egress gate is mandatory: contributions are sealed until disclosed."""
+
+    NOW = date(2026, 6, 11)
+
+    def _consent(self, **overrides):
+        base = dict(
+            site="A", controller="C", lawful_basis="GDPR Art 9(2)(j)",
+            dpia_reference="D", purpose="research", version="v1",
+            coi_acknowledged=True, expires="2027-01-01",
+        )
+        base.update(overrides)
+        return eg.Consent(**base)
+
+    def _data(self, n=40, seed=0):
+        rng = np.random.default_rng(seed)
+        X = pd.DataFrame(rng.normal(size=(n, 4)), columns=[f"f{i}" for i in range(4)],
+                         index=[f"n{i}" for i in range(n)])
+        y = pd.Series(["x", "y"] * (n // 2), index=X.index, name="Outcome")
+        return X, y
+
+    def test_contribution_is_sealed_and_unserializable(self):
+        X, y = self._data()
+        contrib = efed.contribute_aggregate(X, y)
+        self.assertIsInstance(contrib, efed.SiteContribution)
+        # Cannot be shipped directly — the only way out is .disclose().
+        with self.assertRaises(TypeError):
+            json.dumps(contrib)
+        self.assertIn("disclose", repr(contrib))
+
+    def test_disclose_runs_gate_and_combine_reconstructs(self):
+        X, y = self._data()
+        policy = eg.DisclosurePolicy(min_cell=2)
+        sites = np.where(np.arange(len(X)) % 2 == 0, "A", "B")
+        disclosed = []
+        for s in ("A", "B"):
+            rows = sites == s
+            contrib = efed.contribute_aggregate(X.loc[rows], y.loc[rows])
+            disclosed.append(contrib.disclose(policy=policy, consent=self._consent(), now=self.NOW))
+        self.assertIsInstance(disclosed[0], efed.DisclosedContribution)
+        self.assertIn("payload_sha256", disclosed[0].manifest)
+        fit = efed.combine_aggregates(disclosed)
+        self.assertEqual(set(fit["classes"]), {"x", "y"})
+        self.assertEqual(fit["n_total"], len(X))
+
+    def test_disclose_refused_without_valid_consent(self):
+        X, y = self._data()
+        contrib = efed.contribute_aggregate(X, y)
+        with self.assertRaises(eg.GovernanceError):
+            contrib.disclose(policy=eg.DisclosurePolicy(min_cell=2),
+                             consent=self._consent(coi_acknowledged=False), now=self.NOW)
+
+    def test_combine_accepts_disclosed_and_raw_equivalently(self):
+        X, y = self._data()
+        policy = eg.DisclosurePolicy(min_cell=2)  # no class is this small -> no suppression
+        raw = [efed.site_aggregates(X.iloc[:20], y.iloc[:20]),
+               efed.site_aggregates(X.iloc[20:], y.iloc[20:])]
+        disclosed = [
+            efed.contribute_aggregate(X.iloc[:20], y.iloc[:20]).disclose(
+                policy=policy, consent=self._consent(), now=self.NOW),
+            efed.contribute_aggregate(X.iloc[20:], y.iloc[20:]).disclose(
+                policy=policy, consent=self._consent(), now=self.NOW),
+        ]
+        fit_raw = efed.combine_aggregates(raw)
+        fit_disclosed = efed.combine_aggregates(disclosed)
+        np.testing.assert_allclose(fit_raw["centroids"], fit_disclosed["centroids"], atol=1e-12)
+        np.testing.assert_allclose(fit_raw["mean"], fit_disclosed["mean"], atol=1e-12)
+
+
 class GovernanceGateTests(unittest.TestCase):
     """The egress gate fails closed and discloses exactly what crosses."""
 

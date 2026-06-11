@@ -31,12 +31,15 @@ patients cannot leak an individual value. Set it before any real deployment.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import numpy as np
 import pandas as pd
 
 import epinet_cluster
 import epinet_common
 import epinet_contest
+import epinet_governance as governance
 
 VARIANCE_TOL = 1e-12  # matches epinet_cluster.standardize's zero-variance cutoff
 
@@ -103,6 +106,7 @@ def combine_aggregates(aggregates: list[dict[str, object]]) -> dict[str, object]
     """
     if not aggregates:
         raise ValueError("need at least one site aggregate")
+    aggregates = _unwrap(aggregates)
     columns = aggregates[0]["columns"]
     for agg in aggregates:
         if agg["columns"] != columns:
@@ -342,6 +346,7 @@ def combine_contestability(
     """
     if not summaries:
         raise ValueError("need at least one site summary")
+    summaries = _unwrap(summaries)
     columns = summaries[0]["columns"]
     for summary in summaries:
         if summary["columns"] != columns:
@@ -403,3 +408,90 @@ def combine_contestability(
         "feature_voi": feature_voi,
         "nearest_centroid_agreement": (agree / labeled) if labeled else None,
     }
+
+
+# --- Mandatory egress gate -------------------------------------------------
+# The functions above compute aggregates *within* a site's trust boundary (and
+# are reused for the in-boundary two-site simulation and local scoring). The
+# moment an aggregate is meant to LEAVE a site, it must go through the governance
+# gate. We make that structural: the cross-boundary producers below return a
+# sealed SiteContribution that cannot be serialized or shipped — the only way to
+# obtain a shippable payload is ``.disclose(policy, consent)``, which runs
+# ``epinet_governance.check_egress`` (small-cell suppression, tier ceiling,
+# consent, disclosure manifest, audit). This closes the "forgot to call the
+# gate" gap for accidental egress.
+
+
+@dataclass
+class DisclosedContribution:
+    """A site aggregate that has passed the egress gate — safe to ship.
+
+    Carries the redacted ``payload`` (what crosses) and the ``manifest`` (the
+    disclosure record). This is what a coordinator receives and feeds to the
+    ``combine_*`` functions.
+    """
+
+    payload: dict
+    manifest: dict
+
+
+class SiteContribution:
+    """A sealed, not-yet-disclosed site aggregate.
+
+    Holds the raw aggregate privately. It is deliberately not JSON-serializable
+    and its repr hides the data: the only sanctioned way to get a shippable
+    payload is ``disclose()``, which runs the governance gate. This makes the
+    gate mandatory on the egress path rather than an optional extra step.
+    """
+
+    def __init__(self, aggregate: dict, kind: str):
+        self._aggregate = aggregate
+        self.kind = kind
+
+    def disclose(
+        self,
+        *,
+        policy: governance.DisclosurePolicy,
+        consent: governance.Consent,
+        tier: str = "aggregate",
+        audit: governance.AuditLedger | None = None,
+        now=None,
+        timestamp: str | None = None,
+    ) -> DisclosedContribution:
+        """Run the egress gate and return a shippable, disclosed contribution."""
+        payload, manifest = governance.check_egress(
+            self._aggregate, policy=policy, consent=consent, tier=tier,
+            audit=audit, now=now, timestamp=timestamp,
+        )
+        return DisclosedContribution(payload=payload, manifest=manifest)
+
+    def __repr__(self) -> str:
+        return (
+            f"SiteContribution(kind={self.kind!r}, sealed) — call "
+            ".disclose(policy=..., consent=...) to obtain a shippable payload"
+        )
+
+
+def contribute_aggregate(X: pd.DataFrame, y: pd.Series, *, min_cell: int = 0) -> SiteContribution:
+    """Egress entry point for the federated fit: a sealed fit contribution."""
+    return SiteContribution(site_aggregates(X, y, min_cell=min_cell), kind="fit")
+
+
+def contribute_contestability(
+    X: pd.DataFrame,
+    y: pd.Series,
+    fit: dict[str, object],
+    *,
+    metric: str = "euclidean",
+    bin_edges: np.ndarray = DEFAULT_FLIP_BINS,
+) -> SiteContribution:
+    """Egress entry point for federated contestability: a sealed summary."""
+    return SiteContribution(
+        site_contestability(X, y, fit, metric=metric, bin_edges=bin_edges),
+        kind="contestability",
+    )
+
+
+def _unwrap(items: list[object]) -> list[dict]:
+    """Accept raw aggregates (in-boundary) or DisclosedContribution (post-gate)."""
+    return [it.payload if isinstance(it, DisclosedContribution) else it for it in items]
