@@ -103,6 +103,17 @@ def sha256_file(path: str | Path) -> str:
     return digest.hexdigest()
 
 
+def sha256_frame(frame: pd.DataFrame) -> str:
+    """SHA-256 of a DataFrame's canonical CSV serialization.
+
+    Lets provenance fingerprint a table held in memory (e.g. after input
+    normalization) the same way ``sha256_file`` fingerprints a file on disk, so
+    a run can be tied to both the raw input *and* the exact normalized form that
+    was analyzed.
+    """
+    return hashlib.sha256(frame.to_csv(index=False).encode("utf-8")).hexdigest()
+
+
 def provenance(
     input_paths: list[str | Path] | None = None,
     *,

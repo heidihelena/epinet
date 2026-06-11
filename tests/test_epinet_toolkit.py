@@ -977,6 +977,90 @@ class ScientificStandardsTests(unittest.TestCase):
             self.assertGreater((out / "lc.png").stat().st_size, 0)
 
 
+class IngestNormalizationTests(unittest.TestCase):
+    """Front-end column-alias normalization (epinet_ingest)."""
+
+    def test_aliases_are_resolved_to_canonical_schema(self):
+        import epinet_ingest as ein
+
+        nodes = pd.DataFrame([{"patient_id": "p1", "label": 1}, {"patient_id": "p2", "label": 0}])
+        edges = pd.DataFrame([{"from": "p1", "to": "p2"}])
+        out_nodes, out_edges, report = ein.normalize_tables(
+            nodes, edges, id_column="ID", source_column="SourceID",
+            target_column="TargetID", outcome_column="Outcome",
+        )
+        self.assertIn("ID", out_nodes.columns)
+        self.assertIn("Outcome", out_nodes.columns)
+        self.assertIn("SourceID", out_edges.columns)
+        self.assertIn("TargetID", out_edges.columns)
+        self.assertEqual(report["n_operations"], 4)
+        # Inputs are not mutated.
+        self.assertIn("patient_id", nodes.columns)
+
+    def test_canonical_input_is_a_noop_but_still_hashed(self):
+        import epinet_ingest as ein
+
+        nodes = pd.DataFrame([{"ID": "a", "Outcome": 1}])
+        edges = pd.DataFrame([{"SourceID": "a", "TargetID": "a"}])
+        _, _, report = ein.normalize_tables(
+            nodes, edges, id_column="ID", source_column="SourceID",
+            target_column="TargetID", outcome_column="Outcome",
+        )
+        self.assertEqual(report["n_operations"], 0)
+        self.assertEqual(len(report["normalized_nodes_sha256"]), 64)
+
+    def test_sha256_frame_is_deterministic(self):
+        df = pd.DataFrame([{"a": 1, "b": 2}])
+        self.assertEqual(ecommon.sha256_frame(df), ecommon.sha256_frame(df.copy()))
+
+    def test_run_normalizes_aliased_input_end_to_end(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            out = root / "out"
+            nodes = root / "nodes.csv"
+            edges = root / "edges.csv"
+            # Aliased columns: from/to and patient_id/label.
+            nodes.write_text("patient_id,label\nA,1\nB,0\nC,1\nD,0\n")
+            edges.write_text("from,to\nA,B\nB,C\nC,D\n")
+            args = Namespace(
+                nodes=str(nodes), edges=str(edges), output_dir=str(out),
+                id_column="ID", source_column="SourceID", target_column="TargetID",
+                outcome_column="Outcome", target_outcome="1", source_nodes="",
+                target_nodes="", weight_column=None, use_weighted_paths=False,
+                path_mode="hops", directed=False, include_centrality=False,
+                run_model=False, run_paths=True, test_size=0.2, random_state=42,
+            )
+            summary = et.run(args)
+            self.assertEqual(summary["graph"]["nodes"], 4)
+            self.assertTrue((out / "ingest_report.json").exists())
+            ops = summary["provenance"]["normalization"]["operations"]
+            self.assertEqual(summary["provenance"]["normalization"]["n_operations"], 4)
+            roles = {op["role"] for op in ops}
+            self.assertEqual(roles, {"node_id", "outcome", "edge_source", "edge_target"})
+
+    def test_no_normalize_flag_keeps_strict_validation(self):
+        import epinet_ingest as ein  # noqa: F401  (module exists; flag bypasses it)
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            nodes = root / "nodes.csv"
+            edges = root / "edges.csv"
+            nodes.write_text("patient_id,label\nA,1\nB,0\n")
+            edges.write_text("from,to\nA,B\n")
+            args = Namespace(
+                nodes=str(nodes), edges=str(edges), output_dir=str(root / "out"),
+                id_column="ID", source_column="SourceID", target_column="TargetID",
+                outcome_column="Outcome", target_outcome="1", source_nodes="",
+                target_nodes="", weight_column=None, use_weighted_paths=False,
+                path_mode="hops", directed=False, include_centrality=False,
+                run_model=False, run_paths=True, test_size=0.2, random_state=42,
+                normalize=False,
+            )
+            # Strict mode: aliased columns are not recognized -> clear error.
+            with self.assertRaises(ValueError):
+                et.run(args)
+
+
 try:
     from hypothesis import given, settings
     from hypothesis import strategies as st

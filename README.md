@@ -23,6 +23,12 @@ reflects real signal rather than leakage or chance.
 ## What Is Implemented
 
 - CSV node and edge loading.
+- **Input normalization** (on by default; `--no-normalize` for strict mode): maps
+  common column aliases (`patient_id`→`ID`, `from`/`to`→`SourceID`/`TargetID`,
+  `label`→`Outcome`, …) onto the canonical schema before validation, so messy
+  real-world CSVs run without hand-editing. Never silent — every rename is logged
+  to `ingest_report.json` and folded into provenance, which hashes both the raw
+  input file and the normalized table.
 - Network construction with NetworkX.
 - Node-level graph features:
   - degree

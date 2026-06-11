@@ -1000,6 +1000,26 @@ def path_strength(graph: nx.Graph, path: list[str]) -> float:
 
 def run(args: argparse.Namespace) -> dict[str, object]:
     nodes, edges = load_tables(args.nodes, args.edges)
+
+    # Front-end normalization: map common column aliases (patient_id -> ID,
+    # from/to -> SourceID/TargetID, ...) onto the configured schema before strict
+    # validation, so messy real-world CSVs run without hand-editing. Every rename
+    # is recorded and provenance hashes the normalized tables (see below).
+    if getattr(args, "normalize", True):
+        import epinet_ingest
+
+        nodes, edges, ingest_report = epinet_ingest.normalize_tables(
+            nodes,
+            edges,
+            id_column=args.id_column,
+            source_column=args.source_column,
+            target_column=args.target_column,
+            outcome_column=args.outcome_column,
+            weight_column=args.weight_column,
+        )
+    else:
+        ingest_report = {"normalized": False}
+
     validation = validate_tables(
         nodes,
         edges,
@@ -1021,9 +1041,13 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Provenance: stamp the exact inputs, code, and environment so every output
-    # below traces back to a reproducible context.
+    # below traces back to a reproducible context. The normalization report is
+    # folded in (it carries the SHA-256 of the normalized tables), so provenance
+    # ties the run to both the raw input files and the exact analyzed form.
     prov = epinet_common.provenance([args.nodes, args.edges], seed=args.random_state)
+    prov["normalization"] = ingest_report
     (output_dir / "provenance.json").write_text(json.dumps(prov, indent=2) + "\n")
+    (output_dir / "ingest_report.json").write_text(json.dumps(ingest_report, indent=2) + "\n")
 
     summary = {"provenance": prov, "validation": validation, "graph": graph_summary(graph)}
     (output_dir / "graph_summary.json").write_text(json.dumps(summary, indent=2) + "\n")
@@ -1201,6 +1225,17 @@ def build_parser() -> argparse.ArgumentParser:
         "--use-weighted-paths",
         action="store_true",
         help="Deprecated alias for --path-mode distance",
+    )
+    parser.add_argument(
+        "--normalize",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Resolve common column aliases (patient_id->ID, from/to->Source/TargetID, "
+            "label->Outcome, ...) onto the configured schema before validation; every "
+            "rename is logged to ingest_report.json and provenance. Use --no-normalize "
+            "for strict mode (reject anything not already in canonical schema)"
+        ),
     )
     parser.add_argument("--directed", action="store_true", help="Treat edges as directed SourceID -> TargetID")
     parser.add_argument("--include-centrality", action="store_true", help="Add betweenness, closeness, and PageRank features")
