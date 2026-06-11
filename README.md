@@ -56,6 +56,9 @@ Ki67, …). The same lens runs on any cohort. More figures in
   from per-site aggregates only, behind a fail-closed governance gate. See
   [docs/federated.md](docs/federated.md) and
   [docs/governance-and-consent.md](docs/governance-and-consent.md).
+- **Baselines & external validation** — compare graph features against a
+  node-embedding baseline and a no-information floor under the same harness, and
+  validate a model on an independent cohort. See [docs/validation.md](docs/validation.md).
 
 ## Install
 
@@ -110,6 +113,8 @@ The data format is documented in [Data-format.md](Data-format.md).
 - **[docs/governance-and-consent.md](docs/governance-and-consent.md)** — what the
   governance gate enforces vs what remains a policy/legal responsibility
   (explicitly non-legal).
+- **[docs/validation.md](docs/validation.md)** — representation baselines (incl. a
+  node-embedding comparison) and external validation: does the model transport?
 
 Each worked example also has a builder script and a walkthrough under
 `examples/*_usecase.md`; the federated and governance pipelines have runnable
