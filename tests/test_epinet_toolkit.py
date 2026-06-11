@@ -494,6 +494,34 @@ class ToolkitTests(unittest.TestCase):
             self.assertTrue((out / "cluster_summary.json").exists())
             self.assertIn("feature_clusters.png", {Path(p).name for p in summary["plots"]})
 
+    def test_run_writes_vector_plots(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            out = root / "out"
+            args = self._synthetic_run_args(
+                root, out, n_iterations=3, make_plots=True,
+                plot_format="pdf", plot_dpi=200,
+            )
+            summary = et.run(args)
+            self.assertTrue(all(p.endswith(".pdf") for p in summary["plots"]))
+            for plot in summary["plots"]:
+                self.assertTrue((out / plot).exists())
+
+    def test_house_style_removes_chartjunk(self):
+        import matplotlib.pyplot as plt
+
+        ev.apply_house_style()
+        self.assertFalse(plt.rcParams["axes.spines.top"])
+        self.assertFalse(plt.rcParams["axes.spines.right"])
+        self.assertFalse(plt.rcParams["legend.frameon"])
+
+    def test_plot_confusion_matrix_handles_empty_row(self):
+        # A class with no actual samples (zero row) must not divide-by-zero.
+        with tempfile.TemporaryDirectory() as td:
+            path = ev.plot_confusion_matrix(
+                [[3, 1], [0, 0]], ["a", "b"], Path(td) / "cm.png")
+            self.assertGreater(path.stat().st_size, 0)
+
     def test_plot_network_handles_missing_outcome(self):
         graph = et.build_graph(
             pd.DataFrame([{"ID": "A"}, {"ID": "B"}]),

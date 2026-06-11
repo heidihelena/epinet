@@ -155,13 +155,20 @@ the metrics.
 
 Every run writes figures to `<output-dir>/plots/` (disable with `--no-make-plots`):
 
-- `network_overview.png` — spring layout colored by outcome, target nodes
-  outlined in red, nearest source→target paths overlaid
-- `degree_distribution.png`
-- `feature_importance.png` — error bars show cross-iteration variability
-- `metric_stability.png` — box plot of metrics across evaluation iterations
-- `confusion_matrix.png` — held-out test set of the primary split
-- `permutation_null.png` — null distribution vs observed F1 (with `--permutation-test`)
+- `network_overview` — spring layout colored by outcome, target nodes outlined,
+  nearest source→target paths highlighted
+- `degree_distribution`
+- `feature_importance` — error bars show cross-iteration variability
+- `metric_stability` — box plot of metrics across iterations, with the individual
+  iterations overlaid as jittered points
+- `confusion_matrix` — counts plus row-normalized recall, labeled colorbar
+- `permutation_null` — null distribution vs observed F1 (with `--permutation-test`)
+- `feature_clusters` — PCA projection with explained-variance axis labels
+
+All figures share one house style (consistent typography, no chartjunk spines,
+colorblind-friendly Okabe-Ito palette) and render at 300 DPI by default. Use
+`--plot-format pdf` (or `svg`) for vector output and `--plot-dpi N` to change the
+raster resolution.
 
 ## Shortest-Path Examples
 

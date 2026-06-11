@@ -407,7 +407,12 @@ def train_outcome_model(
             "train_rows": int(iteration_metrics["train_rows"].iloc[0]),
             "test_rows": int(iteration_metrics["test_rows"].iloc[0]),
             "classes": [str(c) for c in primary_fit.classes_],
-            "confusion_matrix": confusion_matrix(primary_truth, primary_predictions).tolist(),
+            # Fix labels to the full class set so the matrix is always
+            # n_classes x n_classes and aligns with "classes" above (a held-out
+            # split can otherwise omit a class and produce a smaller matrix).
+            "confusion_matrix": confusion_matrix(
+                primary_truth, primary_predictions, labels=primary_fit.classes_
+            ).tolist(),
         }
     )
     if groups is not None:
@@ -783,6 +788,8 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     if getattr(args, "make_plots", False):
         import epinet_viz
 
+        if getattr(args, "plot_dpi", None):
+            epinet_viz.DEFAULT_DPI = args.plot_dpi
         plots = epinet_viz.generate_run_plots(
             graph,
             output_dir,
@@ -795,6 +802,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             permutation_metrics=model_result["permutation_metrics"] if model_result else None,
             clustering=cluster_result,
             seed=args.random_state,
+            image_format=getattr(args, "plot_format", "png"),
         )
         summary["plots"] = [str(path.relative_to(output_dir)) for path in plots]
 
@@ -860,7 +868,19 @@ def build_parser() -> argparse.ArgumentParser:
         "--make-plots",
         action=argparse.BooleanOptionalAction,
         default=True,
-        help="Write PNG figures (network, degree distribution, model diagnostics) to <output-dir>/plots",
+        help="Write figures (network, degree distribution, model diagnostics) to <output-dir>/plots",
+    )
+    parser.add_argument(
+        "--plot-format",
+        choices=["png", "pdf", "svg"],
+        default="png",
+        help="Figure file format: png (raster) or pdf/svg (vector, for print)",
+    )
+    parser.add_argument(
+        "--plot-dpi",
+        type=int,
+        default=300,
+        help="Raster figure resolution in DPI (ignored for vector formats)",
     )
     parser.add_argument(
         "--n-iterations",

@@ -9,8 +9,13 @@ renders them as figures so a run can be inspected at a glance:
 - metric stability across evaluation iterations
 - confusion matrix heatmap
 
-All functions write PNG files and return the written path. Matplotlib runs with the
+All functions write a figure and return the written path. Matplotlib runs with the
 Agg backend so plotting works in headless environments.
+
+Publication standards: a single house style (``HOUSE_STYLE`` / ``apply_house_style``)
+gives every figure consistent typography, removes top/right spines, and uses a
+colorblind-friendly palette. Figures render at 300 DPI by default (``DEFAULT_DPI``)
+and can be written as raster (PNG) or vector (PDF/SVG) via ``image_format``.
 """
 
 from __future__ import annotations
@@ -39,11 +44,46 @@ CATEGORY_COLORS = [
     "#F0E442",
     "#999999",
 ]
+HIGHLIGHT = "#D81B60"  # accessible magenta for targets/paths (distinct from palette)
+
+# Print-quality default; override per call or via the CLI (--plot-dpi).
+DEFAULT_DPI = 300
+
+# A single house style applied to every figure, so typography, spines, and grid
+# are consistent across the whole figure set (publication standard).
+HOUSE_STYLE = {
+    "figure.dpi": 150,
+    "savefig.dpi": DEFAULT_DPI,
+    "savefig.bbox": "tight",
+    "font.family": "sans-serif",
+    "font.size": 11,
+    "axes.titlesize": 13,
+    "axes.titleweight": "bold",
+    "axes.labelsize": 11,
+    "axes.spines.top": False,
+    "axes.spines.right": False,
+    "axes.axisbelow": True,
+    "axes.grid": False,
+    "xtick.labelsize": 10,
+    "ytick.labelsize": 10,
+    "legend.fontsize": 9,
+    "legend.frameon": False,
+    "figure.titlesize": 14,
+}
 
 
-def _save(fig: plt.Figure, output_path: Path) -> Path:
+def apply_house_style() -> None:
+    """Apply the shared figure style to matplotlib's global rcParams."""
+    plt.rcParams.update(HOUSE_STYLE)
+
+
+apply_house_style()
+
+
+def _save(fig: plt.Figure, output_path: Path, *, dpi: int | None = None) -> Path:
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(output_path, dpi=150, bbox_inches="tight")
+    # Vector formats ignore dpi; raster honours DEFAULT_DPI unless overridden.
+    fig.savefig(output_path, dpi=dpi or DEFAULT_DPI)
     plt.close(fig)
     return output_path
 
@@ -96,7 +136,7 @@ def plot_network(
             nodelist=targets,
             ax=ax,
             node_color="none",
-            edgecolors="red",
+            edgecolors=HIGHLIGHT,
             linewidths=2.0,
             node_size=node_size * 2,
         )
@@ -113,15 +153,15 @@ def plot_network(
             pos,
             edgelist=path_edges,
             ax=ax,
-            edge_color="red",
+            edge_color=HIGHLIGHT,
             width=1.8,
-            alpha=0.8,
+            alpha=0.85,
         )
 
     if graph.number_of_nodes() <= 50:
         nx.draw_networkx_labels(graph, pos, ax=ax, font_size=7)
 
-    ax.set_title("Network overview" + (" (targets outlined, nearest paths in red)" if targets else ""))
+    ax.set_title("Network overview" + (" (targets outlined, nearest paths highlighted)" if targets else ""))
     ax.set_axis_off()
     return _save(fig, output_path)
 
@@ -135,6 +175,7 @@ def plot_degree_distribution(graph: nx.Graph, output_path: Path) -> Path:
     ax.set_xlabel("Degree")
     ax.set_ylabel("Node count")
     ax.set_title("Degree distribution")
+    ax.grid(axis="y", alpha=0.3)
     return _save(fig, output_path)
 
 
@@ -153,8 +194,10 @@ def plot_feature_importance(
     fig, ax = plt.subplots(figsize=(7, max(3, 0.4 * len(top))))
     errors = top["importance_std"] if "importance_std" in top.columns else None
     ax.barh(top["feature"], top["importance"], xerr=errors, color=CATEGORY_COLORS[0], capsize=3)
-    ax.set_xlabel("Importance")
+    ax.set_xlabel("Importance" + (" (mean ± sd across iterations)" if errors is not None else ""))
     ax.set_title("Model feature importance")
+    ax.grid(axis="x", alpha=0.3)
+    ax.margins(y=0.01)
     return _save(fig, output_path)
 
 
@@ -166,10 +209,15 @@ def plot_metric_stability(iteration_metrics: pd.DataFrame, output_path: Path) ->
         if column in iteration_metrics.columns
     ]
     fig, ax = plt.subplots(figsize=(7, 5))
-    ax.boxplot(
-        [iteration_metrics[column] for column in metric_columns],
-        tick_labels=metric_columns,
-    )
+    data = [iteration_metrics[column] for column in metric_columns]
+    ax.boxplot(data, tick_labels=[c.replace("_weighted", "") for c in metric_columns],
+               medianprops={"color": HIGHLIGHT})
+    # Overlay individual iterations (jittered) so the spread is shown, not hidden.
+    rng = np.random.default_rng(0)
+    for i, column in enumerate(metric_columns, start=1):
+        x = rng.normal(i, 0.04, size=len(iteration_metrics))
+        ax.scatter(x, iteration_metrics[column], s=12, color=CATEGORY_COLORS[0],
+                   alpha=0.4, zorder=3)
     ax.set_ylim(0, 1.05)
     ax.set_ylabel("Score")
     ax.set_title(f"Metric stability across {len(iteration_metrics)} iterations")
@@ -196,13 +244,14 @@ def plot_permutation_null(
     )
     ax.axvline(
         observed_mean,
-        color="red",
+        color=HIGHLIGHT,
         linewidth=2,
         label=f"observed mean = {observed_mean:.3f}",
     )
     ax.set_xlabel(metric)
     ax.set_ylabel("Permutations")
     ax.set_title(f"Permutation test: {metric} (p = {p_value:.3f})")
+    ax.grid(axis="y", alpha=0.3)
     ax.legend()
     return _save(fig, output_path)
 
@@ -224,9 +273,12 @@ def plot_clusters_pca(
     from sklearn.decomposition import PCA
 
     n_components = min(2, standardized.shape[1])
-    coords = PCA(n_components=n_components, random_state=0).fit_transform(standardized)
+    pca = PCA(n_components=n_components, random_state=0)
+    coords = pca.fit_transform(standardized)
+    evr = list(pca.explained_variance_ratio_)
     if coords.shape[1] == 1:
         coords = np.column_stack([coords[:, 0], np.zeros(len(coords))])
+        evr.append(0.0)
 
     if outcomes is not None:
         outcomes = ["unlabeled" if pd.isna(o) else str(o) for o in outcomes]
@@ -258,9 +310,10 @@ def plot_clusters_pca(
         centroid = coords[cluster_labels == cluster].mean(axis=0)
         ax.scatter(centroid[0], centroid[1], c="black", marker="X", s=160, zorder=5)
 
-    ax.set_xlabel("PC1")
-    ax.set_ylabel("PC2")
+    ax.set_xlabel(f"PC1 ({evr[0] * 100:.0f}% variance)")
+    ax.set_ylabel(f"PC2 ({evr[1] * 100:.0f}% variance)")
     ax.set_title(f"Feature-space clusters ({metric} centroids; black X = cluster centroid)")
+    ax.grid(alpha=0.2)
     ax.legend(fontsize=7, loc="best")
     return _save(fig, output_path)
 
@@ -270,26 +323,30 @@ def plot_confusion_matrix(
     classes: list[str],
     output_path: Path,
 ) -> Path:
-    array = np.asarray(matrix)
-    fig, ax = plt.subplots(figsize=(5, 4))
-    image = ax.imshow(array, cmap="Blues")
-    fig.colorbar(image, ax=ax)
+    array = np.asarray(matrix, dtype=float)
+    row_totals = array.sum(axis=1, keepdims=True)
+    row_norm = np.divide(array, row_totals, out=np.zeros_like(array), where=row_totals > 0)
+
+    fig, ax = plt.subplots(figsize=(5.2, 4.4))
+    image = ax.imshow(row_norm, cmap="Blues", vmin=0, vmax=1)
+    cbar = fig.colorbar(image, ax=ax, fraction=0.046, pad=0.04)
+    cbar.set_label("Row-normalized (recall)")
     ax.set_xticks(range(len(classes)), classes)
     ax.set_yticks(range(len(classes)), classes)
     ax.set_xlabel("Predicted")
     ax.set_ylabel("Actual")
     ax.set_title("Confusion matrix (held-out test set)")
-    threshold = array.max() / 2 if array.size else 0
+    # Minor gridlines between cells for readability.
+    ax.set_xticks(np.arange(-0.5, len(classes), 1), minor=True)
+    ax.set_yticks(np.arange(-0.5, len(classes), 1), minor=True)
+    ax.grid(which="minor", color="white", linewidth=1.5)
+    ax.tick_params(which="minor", length=0)
     for i in range(array.shape[0]):
         for j in range(array.shape[1]):
-            ax.text(
-                j,
-                i,
-                str(array[i, j]),
-                ha="center",
-                va="center",
-                color="white" if array[i, j] > threshold else "black",
-            )
+            # Each cell shows the count and the row-normalized percentage.
+            label = f"{int(array[i, j])}\n{row_norm[i, j] * 100:.0f}%"
+            ax.text(j, i, label, ha="center", va="center",
+                    color="white" if row_norm[i, j] > 0.5 else "black")
     return _save(fig, output_path)
 
 
@@ -306,10 +363,18 @@ def generate_run_plots(
     permutation_metrics: pd.DataFrame | None = None,
     clustering: dict | None = None,
     seed: int = 42,
+    image_format: str = "png",
 ) -> list[Path]:
-    """Render every figure supported by the available run artifacts."""
+    """Render every figure supported by the available run artifacts.
+
+    ``image_format`` selects the file type for every figure: ``png`` (default,
+    raster at DEFAULT_DPI) or a vector format (``pdf``/``svg``) for print.
+    """
     plots_dir = output_dir / "plots"
     written: list[Path] = []
+
+    def fp(name: str) -> Path:
+        return plots_dir / f"{name}.{image_format}"
 
     paths = None
     if nearest is not None and not nearest.empty:
@@ -321,28 +386,28 @@ def generate_run_plots(
     written.append(
         plot_network(
             graph,
-            plots_dir / "network_overview.png",
+            fp("network_overview"),
             outcome_attribute=outcome_attribute,
             target_nodes=target_nodes,
             paths=paths,
             seed=seed,
         )
     )
-    written.append(plot_degree_distribution(graph, plots_dir / "degree_distribution.png"))
+    written.append(plot_degree_distribution(graph, fp("degree_distribution")))
 
     if importance is not None and not importance.empty:
-        written.append(plot_feature_importance(importance, plots_dir / "feature_importance.png"))
+        written.append(plot_feature_importance(importance, fp("feature_importance")))
     if metrics is not None and metrics.get("confusion_matrix"):
         written.append(
             plot_confusion_matrix(
                 metrics["confusion_matrix"],
                 metrics.get("classes", []),
-                plots_dir / "confusion_matrix.png",
+                fp("confusion_matrix"),
             )
         )
     if iteration_metrics is not None and len(iteration_metrics) > 1:
         written.append(
-            plot_metric_stability(iteration_metrics, plots_dir / "metric_stability.png")
+            plot_metric_stability(iteration_metrics, fp("metric_stability"))
         )
     if (
         permutation_metrics is not None
@@ -356,7 +421,7 @@ def generate_run_plots(
                 permutation_metrics,
                 f1_summary["observed_mean"],
                 f1_summary["p_value"],
-                plots_dir / "permutation_null.png",
+                fp("permutation_null"),
             )
         )
     if clustering is not None and "_standardized" in clustering:
@@ -370,7 +435,7 @@ def generate_run_plots(
             plot_clusters_pca(
                 clustering["_standardized"],
                 clustering["_cluster_labels"],
-                plots_dir / "feature_clusters.png",
+                fp("feature_clusters"),
                 outcomes=outcomes,
                 metric=clustering["summary"].get("distance_metric", "euclidean"),
             )
