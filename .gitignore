@@ -10,6 +10,9 @@ examples/lidc_outputs/
 examples/lidc_nodes.csv
 examples/lidc_edges.csv
 examples/lidc_provenance.csv
+examples/lidc_divergence_nodes.csv
+examples/lidc_divergence_outputs/
+examples/lidc_diagnosis.csv
 trained_model.joblib
 confusion_matrix.png
 

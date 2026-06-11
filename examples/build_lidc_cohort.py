@@ -83,6 +83,7 @@ def extract_nodules(max_scans: int | None = None) -> list[dict]:
                 "NReaders": len(anns),
                 "MalignancyMedian": median_mal,
                 "MalignancySpread": int(max(malignancies) - min(malignancies)),
+                "ReaderMalignancies": ";".join(str(m) for m in malignancies),
             }
             for feature in SEMANTIC_FEATURES:
                 vals = [getattr(a, feature) for a in anns]
@@ -132,13 +133,15 @@ def write_cohort(out_dir: Path, max_scans: int | None = None) -> None:
                                 "Relationship": "same_scan", "Weight": 1.0})
 
     with (out_dir / "lidc_provenance.csv").open("w", newline="") as fh:
-        prov = ["ID", "pid", "tier", "NReaders", "MalignancyMedian", "MalignancySpread", "DiameterMm"]
+        prov = ["ID", "pid", "tier", "NReaders", "MalignancyMedian", "MalignancySpread",
+                "ReaderMalignancies", "DiameterMm"]
         w = csv.DictWriter(fh, fieldnames=prov)
         w.writeheader()
         for n in nodules:
             w.writerow({"ID": n["nid"], "pid": n["pid"], "tier": n["tier"],
                         "NReaders": n["NReaders"], "MalignancyMedian": n["MalignancyMedian"],
-                        "MalignancySpread": n["MalignancySpread"], "DiameterMm": n["DiameterMm"]})
+                        "MalignancySpread": n["MalignancySpread"],
+                        "ReaderMalignancies": n["ReaderMalignancies"], "DiameterMm": n["DiameterMm"]})
 
     tiers = [n["tier"] for n in nodules]
     spreads = [n["MalignancySpread"] for n in nodules]

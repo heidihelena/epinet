@@ -275,6 +275,15 @@ the indeterminate middle (it never confuses benign with suspicious), and reader
 disagreement turns out largely orthogonal to feature-space ambiguity. See
 `examples/lidc_cohort_usecase.md`.
 
+`examples/divergence_topography.py` goes further: it treats the up-to-four
+radiologist readers as two independent labelings (split-half) and asks whether
+their *disagreement* is structured in feature space. It is — but only shallowly
+(accuracy 0.587 vs null 0.527, p ≈ 0.015, barely over the 0.577 base rate):
+42% of nodules are internally contested, and that contest is mostly idiosyncratic
+to the reader, not the nodule. A pathology drop-in (`--pathology`) runs the same
+divergence analysis against a lower-variance reference when the data is supplied.
+See `examples/divergence_topography_usecase.md`.
+
 ## Nordic Lung Cancer Quality-Indicator Example
 
 A larger, real-domain example models lung cancer pathway quality indicators
