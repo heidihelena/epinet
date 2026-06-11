@@ -3,9 +3,32 @@ __pycache__/
 
 epinet_outputs/
 examples/citematch_outputs/
+examples/nordic_qi_outputs/
+examples/nodule_outputs/
+examples/lidc_outputs/
+# LIDC-IDRI derived tables are regenerated from pylidc (see build_lidc_cohort.py)
+examples/lidc_nodes.csv
+examples/lidc_edges.csv
+examples/lidc_provenance.csv
+examples/lidc_divergence_nodes.csv
+examples/lidc_divergence_outputs/
+examples/lidc_diagnosis.csv
+examples/lidc_pathology_outputs/
 trained_model.joblib
 confusion_matrix.png
 
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+examples/nlst_nodes.csv
+examples/nlst_edges.csv
+examples/nlst_provenance.csv
+examples/luna16_nodes.csv
+examples/luna16_edges.csv
+examples/luna16_provenance.csv
+*.egg-info/
+build/
+dist/
+examples/lymphoma_nodes.csv
+examples/lymphoma_edges.csv
+examples/lymphoma_outputs/

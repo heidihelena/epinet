@@ -1,0 +1,188 @@
+ID,NodeType,Outcome,Label,DiameterMm,TypePartSolid,TypeNonSolid,Spiculation,UpperLobe,NoduleCount,GrowthVDTdays,Age,Female,Emphysema,FamilyHistory,EverSmoker
+PT_000,Patient,,patient age 67,,,,,,,,,,,,
+PT_001,Patient,,patient age 66,,,,,,,,,,,,
+PT_002,Patient,,patient age 66,,,,,,,,,,,,
+PT_003,Patient,,patient age 85,,,,,,,,,,,,
+PT_004,Patient,,patient age 49,,,,,,,,,,,,
+PT_005,Patient,,patient age 76,,,,,,,,,,,,
+PT_006,Patient,,patient age 49,,,,,,,,,,,,
+PT_007,Patient,,patient age 55,,,,,,,,,,,,
+PT_008,Patient,,patient age 61,,,,,,,,,,,,
+PT_009,Patient,,patient age 66,,,,,,,,,,,,
+PT_010,Patient,,patient age 65,,,,,,,,,,,,
+PT_011,Patient,,patient age 67,,,,,,,,,,,,
+PT_012,Patient,,patient age 66,,,,,,,,,,,,
+PT_013,Patient,,patient age 62,,,,,,,,,,,,
+PT_014,Patient,,patient age 80,,,,,,,,,,,,
+PT_015,Patient,,patient age 80,,,,,,,,,,,,
+PT_016,Patient,,patient age 64,,,,,,,,,,,,
+PT_017,Patient,,patient age 58,,,,,,,,,,,,
+PT_018,Patient,,patient age 62,,,,,,,,,,,,
+PT_019,Patient,,patient age 60,,,,,,,,,,,,
+PT_020,Patient,,patient age 72,,,,,,,,,,,,
+PT_021,Patient,,patient age 76,,,,,,,,,,,,
+PT_022,Patient,,patient age 64,,,,,,,,,,,,
+PT_023,Patient,,patient age 57,,,,,,,,,,,,
+PT_024,Patient,,patient age 66,,,,,,,,,,,,
+PT_025,Patient,,patient age 53,,,,,,,,,,,,
+PT_026,Patient,,patient age 78,,,,,,,,,,,,
+PT_027,Patient,,patient age 58,,,,,,,,,,,,
+PT_028,Patient,,patient age 63,,,,,,,,,,,,
+PT_029,Patient,,patient age 69,,,,,,,,,,,,
+PT_030,Patient,,patient age 75,,,,,,,,,,,,
+PT_031,Patient,,patient age 73,,,,,,,,,,,,
+PT_032,Patient,,patient age 74,,,,,,,,,,,,
+PT_033,Patient,,patient age 71,,,,,,,,,,,,
+PT_034,Patient,,patient age 63,,,,,,,,,,,,
+PT_035,Patient,,patient age 68,,,,,,,,,,,,
+PT_036,Patient,,patient age 57,,,,,,,,,,,,
+PT_037,Patient,,patient age 73,,,,,,,,,,,,
+PT_038,Patient,,patient age 50,,,,,,,,,,,,
+PT_039,Patient,,patient age 51,,,,,,,,,,,,
+PT_040,Patient,,patient age 57,,,,,,,,,,,,
+PT_041,Patient,,patient age 63,,,,,,,,,,,,
+PT_042,Patient,,patient age 73,,,,,,,,,,,,
+PT_043,Patient,,patient age 67,,,,,,,,,,,,
+PT_044,Patient,,patient age 51,,,,,,,,,,,,
+PT_045,Patient,,patient age 77,,,,,,,,,,,,
+PT_046,Patient,,patient age 68,,,,,,,,,,,,
+PT_047,Patient,,patient age 85,,,,,,,,,,,,
+PT_048,Patient,,patient age 67,,,,,,,,,,,,
+PT_049,Patient,,patient age 77,,,,,,,,,,,,
+PT_050,Patient,,patient age 61,,,,,,,,,,,,
+PT_051,Patient,,patient age 87,,,,,,,,,,,,
+PT_052,Patient,,patient age 65,,,,,,,,,,,,
+PT_053,Patient,,patient age 59,,,,,,,,,,,,
+PT_054,Patient,,patient age 50,,,,,,,,,,,,
+PT_055,Patient,,patient age 57,,,,,,,,,,,,
+PT_056,Patient,,patient age 66,,,,,,,,,,,,
+PT_057,Patient,,patient age 63,,,,,,,,,,,,
+PT_058,Patient,,patient age 83,,,,,,,,,,,,
+PT_059,Patient,,patient age 68,,,,,,,,,,,,
+PT_060,Patient,,patient age 65,,,,,,,,,,,,
+PT_061,Patient,,patient age 69,,,,,,,,,,,,
+PT_062,Patient,,patient age 67,,,,,,,,,,,,
+PT_063,Patient,,patient age 66,,,,,,,,,,,,
+PT_064,Patient,,patient age 59,,,,,,,,,,,,
+PT_065,Patient,,patient age 77,,,,,,,,,,,,
+PT_066,Patient,,patient age 77,,,,,,,,,,,,
+PT_067,Patient,,patient age 73,,,,,,,,,,,,
+PT_068,Patient,,patient age 56,,,,,,,,,,,,
+PT_069,Patient,,patient age 80,,,,,,,,,,,,
+ND_000_0,Nodule,low,solid 5.6mm,5.6,0,0,0,1,1,9999,67,0,1,0,1
+ND_001_0,Nodule,intermediate,solid 11.1mm,11.1,0,0,1,1,1,273.3,66,0,0,0,1
+ND_002_0,Nodule,low,part_solid 6.9mm,6.9,1,0,1,1,2,315.3,66,0,1,0,1
+ND_002_1,Nodule,low,part_solid 7.2mm,7.2,1,0,1,1,2,300.7,66,0,1,0,1
+ND_003_0,Nodule,intermediate,solid 13.4mm,13.4,0,0,0,0,2,9999,85,0,0,1,1
+ND_003_1,Nodule,intermediate,solid 19.0mm,19.0,0,0,0,1,2,435.2,85,0,0,1,1
+ND_004_0,Nodule,intermediate,solid 17.0mm,17.0,0,0,1,0,2,449.0,49,0,0,1,0
+ND_004_1,Nodule,low,solid 5.7mm,5.7,0,0,1,0,2,250.6,49,0,0,1,0
+ND_005_0,Nodule,intermediate,solid 19.2mm,19.2,0,0,1,0,3,205.7,76,0,0,1,1
+ND_005_1,Nodule,low,solid 9.6mm,9.6,0,0,0,1,3,9999,76,0,0,1,1
+ND_005_2,Nodule,intermediate,part_solid 13.7mm,13.7,1,0,1,0,3,314.4,76,0,0,1,1
+ND_006_0,Nodule,low,non_solid 7.4mm,7.4,0,1,0,0,2,938.8,49,1,0,0,1
+ND_006_1,Nodule,low,solid 4.5mm,4.5,0,0,0,0,2,2210.1,49,1,0,0,1
+ND_007_0,Nodule,intermediate,solid 13.5mm,13.5,0,0,1,1,2,76.5,55,1,0,0,1
+ND_007_1,Nodule,low,solid 4.4mm,4.4,0,0,0,1,2,914.0,55,1,0,0,1
+ND_008_0,Nodule,low,part_solid 6.6mm,6.6,1,0,0,1,1,684.2,61,0,0,0,1
+ND_009_0,Nodule,high,solid 29.5mm,29.5,0,0,1,1,1,110.3,66,0,1,0,1
+ND_010_0,Nodule,low,part_solid 8.7mm,8.7,1,0,0,0,2,9999,65,1,0,0,1
+ND_010_1,Nodule,low,solid 4.4mm,4.4,0,0,0,1,2,677.0,65,1,0,0,1
+ND_011_0,Nodule,low,part_solid 6.8mm,6.8,1,0,0,1,2,9999,67,0,1,0,1
+ND_011_1,Nodule,low,solid 4.9mm,4.9,0,0,0,1,2,340.9,67,0,1,0,1
+ND_012_0,Nodule,intermediate,solid 11.8mm,11.8,0,0,1,1,1,9999,66,1,0,0,1
+ND_013_0,Nodule,intermediate,solid 21.4mm,21.4,0,0,0,1,2,316.7,62,1,0,0,1
+ND_013_1,Nodule,intermediate,solid 11.5mm,11.5,0,0,0,1,2,275.6,62,1,0,0,1
+ND_014_0,Nodule,low,solid 4.3mm,4.3,0,0,0,0,1,905.1,80,0,0,0,1
+ND_015_0,Nodule,low,part_solid 6.2mm,6.2,1,0,0,0,3,634.1,80,0,0,0,0
+ND_015_1,Nodule,low,part_solid 5.3mm,5.3,1,0,0,1,3,9999,80,0,0,0,0
+ND_015_2,Nodule,intermediate,non_solid 10.4mm,10.4,0,1,1,1,3,742.5,80,0,0,0,0
+ND_016_0,Nodule,intermediate,solid 15.5mm,15.5,0,0,0,1,2,295.4,64,0,0,0,1
+ND_016_1,Nodule,low,solid 6.4mm,6.4,0,0,1,1,2,127.9,64,0,0,0,1
+ND_017_0,Nodule,intermediate,solid 10.7mm,10.7,0,0,1,1,1,461.8,58,1,0,0,0
+ND_018_0,Nodule,intermediate,part_solid 8.8mm,8.8,1,0,1,1,2,117.3,62,0,0,0,1
+ND_018_1,Nodule,low,non_solid 4.0mm,4.0,0,1,1,1,2,263.1,62,0,0,0,1
+ND_019_0,Nodule,intermediate,solid 11.5mm,11.5,0,0,0,1,4,474.7,60,1,1,0,1
+ND_019_1,Nodule,intermediate,solid 17.7mm,17.7,0,0,1,0,4,133.5,60,1,1,0,1
+ND_019_2,Nodule,low,solid 8.8mm,8.8,0,0,0,1,4,394.0,60,1,1,0,1
+ND_019_3,Nodule,low,solid 4.1mm,4.1,0,0,0,0,4,350.8,60,1,1,0,1
+ND_020_0,Nodule,low,solid 5.2mm,5.2,0,0,0,1,1,9999,72,1,0,0,1
+ND_021_0,Nodule,low,solid 4.4mm,4.4,0,0,0,1,2,596.4,76,0,1,0,1
+ND_021_1,Nodule,low,part_solid 4.5mm,4.5,1,0,0,0,2,590.3,76,0,1,0,1
+ND_022_0,Nodule,low,solid 7.2mm,7.2,0,0,0,1,1,501.6,64,1,0,0,1
+ND_023_0,Nodule,low,solid 8.3mm,8.3,0,0,1,1,2,154.8,57,0,0,1,0
+ND_023_1,Nodule,low,solid 4.0mm,4.0,0,0,0,1,2,731.7,57,0,0,1,0
+ND_024_0,Nodule,low,solid 4.0mm,4.0,0,0,0,0,2,1042.8,66,1,0,0,1
+ND_024_1,Nodule,low,solid 4.0mm,4.0,0,0,1,1,2,310.8,66,1,0,0,1
+ND_025_0,Nodule,low,solid 6.9mm,6.9,0,0,1,1,1,237.5,53,0,0,0,1
+ND_026_0,Nodule,low,solid 4.4mm,4.4,0,0,1,1,1,401.3,78,0,1,0,1
+ND_027_0,Nodule,low,solid 5.3mm,5.3,0,0,0,0,1,468.5,58,0,0,0,1
+ND_028_0,Nodule,intermediate,solid 22.6mm,22.6,0,0,0,1,1,467.5,63,1,1,0,1
+ND_029_0,Nodule,low,part_solid 4.0mm,4.0,1,0,0,0,1,9999,69,0,0,0,0
+ND_030_0,Nodule,intermediate,solid 7.9mm,7.9,0,0,1,1,2,208.3,75,1,0,0,0
+ND_030_1,Nodule,intermediate,part_solid 8.5mm,8.5,1,0,0,1,2,365.3,75,1,0,0,0
+ND_031_0,Nodule,high,solid 24.5mm,24.5,0,0,1,0,3,2488.0,73,1,0,0,1
+ND_031_1,Nodule,high,solid 32.9mm,32.9,0,0,0,1,3,9999,73,1,0,0,1
+ND_031_2,Nodule,low,solid 8.9mm,8.9,0,0,0,1,3,354.6,73,1,0,0,1
+ND_032_0,Nodule,low,part_solid 6.9mm,6.9,1,0,0,1,2,165.2,74,1,0,0,0
+ND_032_1,Nodule,low,part_solid 4.0mm,4.0,1,0,0,1,2,410.5,74,1,0,0,0
+ND_033_0,Nodule,intermediate,part_solid 7.7mm,7.7,1,0,0,1,1,626.7,71,1,1,1,1
+ND_034_0,Nodule,low,solid 7.2mm,7.2,0,0,0,0,2,299.6,63,1,0,0,1
+ND_034_1,Nodule,low,solid 4.8mm,4.8,0,0,0,1,2,379.4,63,1,0,0,1
+ND_035_0,Nodule,low,solid 6.9mm,6.9,0,0,0,1,1,9999,68,1,0,0,1
+ND_036_0,Nodule,high,solid 38.5mm,38.5,0,0,1,1,2,84.2,57,1,0,0,1
+ND_036_1,Nodule,low,solid 9.5mm,9.5,0,0,1,0,2,286.5,57,1,0,0,1
+ND_037_0,Nodule,low,solid 4.0mm,4.0,0,0,1,1,1,344.2,73,1,0,0,1
+ND_038_0,Nodule,low,solid 8.0mm,8.0,0,0,1,1,1,225.2,50,0,0,0,1
+ND_039_0,Nodule,low,solid 6.8mm,6.8,0,0,0,0,1,625.0,51,1,0,0,1
+ND_040_0,Nodule,low,solid 7.9mm,7.9,0,0,0,0,3,976.7,57,1,1,0,1
+ND_040_1,Nodule,low,solid 7.9mm,7.9,0,0,0,1,3,367.6,57,1,1,0,1
+ND_040_2,Nodule,high,solid 30.6mm,30.6,0,0,1,0,3,1446.3,57,1,1,0,1
+ND_041_0,Nodule,low,non_solid 5.0mm,5.0,0,1,0,0,1,9999,63,0,0,0,0
+ND_042_0,Nodule,intermediate,solid 8.4mm,8.4,0,0,1,1,2,597.6,73,1,1,0,1
+ND_042_1,Nodule,low,solid 7.3mm,7.3,0,0,1,0,2,394.7,73,1,1,0,1
+ND_043_0,Nodule,intermediate,solid 13.8mm,13.8,0,0,0,1,2,9999,67,1,0,0,1
+ND_043_1,Nodule,low,solid 5.7mm,5.7,0,0,0,0,2,404.4,67,1,0,0,1
+ND_044_0,Nodule,intermediate,solid 14.1mm,14.1,0,0,1,0,2,161.2,51,0,1,0,1
+ND_044_1,Nodule,low,solid 6.5mm,6.5,0,0,0,0,2,528.5,51,0,1,0,1
+ND_045_0,Nodule,high,solid 31.5mm,31.5,0,0,1,1,1,276.8,77,1,1,0,1
+ND_046_0,Nodule,low,non_solid 7.4mm,7.4,0,1,1,1,2,429.6,68,0,1,1,1
+ND_046_1,Nodule,intermediate,solid 9.4mm,9.4,0,0,1,0,2,199.2,68,0,1,1,1
+ND_047_0,Nodule,low,part_solid 6.8mm,6.8,1,0,0,1,1,265.1,85,1,0,0,1
+ND_048_0,Nodule,intermediate,non_solid 11.2mm,11.2,0,1,0,1,1,502.2,67,1,0,1,1
+ND_049_0,Nodule,low,solid 6.0mm,6.0,0,0,0,1,1,183.1,77,0,0,0,1
+ND_050_0,Nodule,low,solid 5.8mm,5.8,0,0,0,0,1,378.3,61,1,1,0,1
+ND_051_0,Nodule,intermediate,solid 9.8mm,9.8,0,0,1,1,3,125.7,87,1,1,0,1
+ND_051_1,Nodule,high,non_solid 28.8mm,28.8,0,1,0,0,3,589.2,87,1,1,0,1
+ND_051_2,Nodule,low,part_solid 4.6mm,4.6,1,0,0,0,3,304.4,87,1,1,0,1
+ND_052_0,Nodule,high,solid 19.4mm,19.4,0,0,1,1,1,180.8,65,1,1,1,1
+ND_053_0,Nodule,low,non_solid 5.2mm,5.2,0,1,0,1,1,1326.2,59,0,0,0,1
+ND_054_0,Nodule,intermediate,solid 10.3mm,10.3,0,0,0,1,1,189.1,50,1,1,0,1
+ND_055_0,Nodule,low,solid 7.6mm,7.6,0,0,1,1,1,229.4,57,0,1,0,1
+ND_056_0,Nodule,low,solid 4.0mm,4.0,0,0,0,1,1,9999,66,0,0,0,1
+ND_057_0,Nodule,low,solid 4.0mm,4.0,0,0,0,1,1,430.6,63,1,0,0,0
+ND_058_0,Nodule,intermediate,solid 13.6mm,13.6,0,0,0,0,2,412.0,83,1,0,0,0
+ND_058_1,Nodule,low,solid 6.4mm,6.4,0,0,1,0,2,206.2,83,1,0,0,0
+ND_059_0,Nodule,high,part_solid 21.6mm,21.6,1,0,1,0,3,372.1,68,1,0,0,0
+ND_059_1,Nodule,intermediate,solid 15.9mm,15.9,0,0,1,1,3,255.5,68,1,0,0,0
+ND_059_2,Nodule,low,solid 6.5mm,6.5,0,0,0,0,3,619.9,68,1,0,0,0
+ND_060_0,Nodule,low,solid 7.5mm,7.5,0,0,0,0,2,4051.0,65,0,1,0,1
+ND_060_1,Nodule,low,part_solid 6.9mm,6.9,1,0,0,0,2,216.1,65,0,1,0,1
+ND_061_0,Nodule,intermediate,solid 28.6mm,28.6,0,0,0,0,1,532.1,69,1,1,0,0
+ND_062_0,Nodule,intermediate,solid 13.9mm,13.9,0,0,0,1,3,9999,67,0,0,1,1
+ND_062_1,Nodule,low,solid 7.1mm,7.1,0,0,0,0,3,9999,67,0,0,1,1
+ND_062_2,Nodule,low,solid 7.0mm,7.0,0,0,0,0,3,995.9,67,0,0,1,1
+ND_063_0,Nodule,intermediate,solid 11.9mm,11.9,0,0,0,1,4,289.0,66,1,0,0,1
+ND_063_1,Nodule,low,non_solid 7.7mm,7.7,0,1,1,0,4,994.6,66,1,0,0,1
+ND_063_2,Nodule,low,non_solid 6.9mm,6.9,0,1,1,1,4,466.9,66,1,0,0,1
+ND_063_3,Nodule,low,solid 6.3mm,6.3,0,0,0,1,4,9999,66,1,0,0,1
+ND_064_0,Nodule,intermediate,solid 17.5mm,17.5,0,0,1,1,1,202.7,59,0,1,1,0
+ND_065_0,Nodule,low,solid 6.0mm,6.0,0,0,0,0,2,276.1,77,1,0,1,0
+ND_065_1,Nodule,intermediate,solid 8.2mm,8.2,0,0,0,1,2,370.1,77,1,0,1,0
+ND_066_0,Nodule,intermediate,solid 10.0mm,10.0,0,0,0,1,2,3809.2,77,1,0,0,1
+ND_066_1,Nodule,low,part_solid 6.7mm,6.7,1,0,0,0,2,547.9,77,1,0,0,1
+ND_067_0,Nodule,intermediate,solid 13.1mm,13.1,0,0,0,0,1,9999,73,1,0,1,1
+ND_068_0,Nodule,intermediate,solid 21.9mm,21.9,0,0,1,1,3,530.7,56,0,0,0,1
+ND_068_1,Nodule,low,solid 4.7mm,4.7,0,0,0,1,3,9999,56,0,0,0,1
+ND_068_2,Nodule,low,solid 5.3mm,5.3,0,0,1,1,3,148.0,56,0,0,0,1
+ND_069_0,Nodule,low,solid 4.0mm,4.0,0,0,0,1,1,316.1,80,0,0,0,1

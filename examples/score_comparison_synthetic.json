@@ -1,0 +1,74 @@
+{
+  "n": 117,
+  "n_latent_malignant": 39,
+  "spearman": {
+    "Brock": {
+      "Brock": 1.0,
+      "Mayo": 0.776,
+      "NTOG": 0.656
+    },
+    "Mayo": {
+      "Brock": 0.776,
+      "Mayo": 1.0,
+      "NTOG": 0.867
+    },
+    "NTOG": {
+      "Brock": 0.656,
+      "Mayo": 0.867,
+      "NTOG": 1.0
+    }
+  },
+  "auc": {
+    "Brock": {
+      "auc": 0.703,
+      "ci": [
+        0.603,
+        0.795
+      ],
+      "n_boot": 2000
+    },
+    "Mayo": {
+      "auc": 0.716,
+      "ci": [
+        0.619,
+        0.811
+      ],
+      "n_boot": 2000
+    },
+    "NTOG": {
+      "auc": 0.711,
+      "ci": [
+        0.612,
+        0.806
+      ],
+      "n_boot": 2000
+    }
+  },
+  "pairwise_delta_auc": {
+    "NTOG_minus_Brock": {
+      "delta_auc": 0.009,
+      "ci": [
+        -0.084,
+        0.11
+      ],
+      "p_two_sided": 0.875
+    },
+    "NTOG_minus_Mayo": {
+      "delta_auc": -0.005,
+      "ci": [
+        -0.063,
+        0.051
+      ],
+      "p_two_sided": 0.873
+    },
+    "Brock_minus_Mayo": {
+      "delta_auc": -0.013,
+      "ci": [
+        -0.095,
+        0.06
+      ],
+      "p_two_sided": 0.763
+    }
+  },
+  "ntog_vs_brock_rank_shift_corr_with_growthrate": 0.236
+}
