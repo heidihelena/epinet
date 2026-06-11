@@ -1,0 +1,30 @@
+cff-version: 1.2.0
+message: "If you use EpiNet, please cite it as below."
+title: "EpiNet: a transparent network and feature-space analysis toolkit with honest evaluation and federated contestability"
+abstract: >-
+  EpiNet is a research/education toolkit for graph-shaped datasets. It computes
+  graph features, evaluates an outcome model with discrimination and calibration
+  metrics, a label-permutation null, and community-aware splitting, scores how
+  contestable each nearest-centroid call is (closed-form flip-distance), and
+  reconstructs its standardization and contestability spine from per-site
+  aggregates behind a fail-closed governance gate. It is a demonstrator, not
+  clinical decision support.
+type: software
+authors:
+  - family-names: "Andersén"
+    given-names: "Heidi"
+repository-code: "https://github.com/heidihelena/epinet"
+url: "https://github.com/heidihelena/epinet"
+license: MIT
+version: "0.2.0"
+date-released: "2026-06-11"
+keywords:
+  - "network analysis"
+  - "feature-space clustering"
+  - "clinical prediction model"
+  - "calibration"
+  - "model contestability"
+  - "federated analysis"
+  - "statistical disclosure control"
+# After linking the repo to Zenodo and cutting a release, add the minted DOI:
+# doi: "10.5281/zenodo.XXXXXXX"
