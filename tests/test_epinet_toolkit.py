@@ -1,4 +1,5 @@
 import json
+import sys
 import tempfile
 import unittest
 from argparse import Namespace
@@ -10,6 +11,9 @@ import pandas as pd
 import epinet_cluster as ec
 import epinet_toolkit as et
 import epinet_viz as ev
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "examples"))
+import validate_nodule_models as vnm  # noqa: E402
 
 
 class ToolkitTests(unittest.TestCase):
@@ -483,6 +487,26 @@ class ToolkitTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             path = ev.plot_network(graph, Path(td) / "net.png")
             self.assertGreater(path.stat().st_size, 0)
+
+
+class NoduleModelValidationTests(unittest.TestCase):
+    def test_port_matches_verbatim_ntog_formula(self):
+        eq = vnm.check_source_equivalence(n=2000, seed=1)
+        self.assertLess(eq["max_brock_abs_error"], 1e-9)
+        self.assertLess(eq["max_mayo_abs_error"], 1e-9)
+
+    def test_coefficients_match_published_odds_ratios(self):
+        for name, r in vnm.check_odds_ratios().items():
+            self.assertTrue(r["ok"], f"{name}: exp(coef)={r['computed_or']} vs {r['published_or']}")
+
+    def test_worked_cases_and_properties(self):
+        wc = vnm.check_worked_cases()
+        self.assertTrue(wc["size_term_zero_at_4mm"])
+        self.assertTrue(wc["worked_brock_8mm"]["ok"])
+        self.assertTrue(wc["type_ordering_partsolid_solid_nonsolid"])
+        self.assertTrue(wc["monotonic_in_diameter"])
+        self.assertTrue(wc["vdt_doubling_100d"])
+        self.assertTrue(wc["vdt_quadruple_300d"])
 
 
 if __name__ == "__main__":

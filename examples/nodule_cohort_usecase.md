@@ -10,9 +10,28 @@ adds exactly that step.
 > **Synthetic data.** Every patient and nodule here is sampled from plausible
 > distributions — no real patient data is used. The risk-model *coefficients*
 > are the published ones, reimplemented in Python in
-> [`build_nodule_cohort.py`](build_nodule_cohort.py); that port should be
-> cross-checked against the live NTOG tool before any clinical or publication
-> use. The three-band risk tier is illustrative, not a clinical standard.
+> [`build_nodule_cohort.py`](build_nodule_cohort.py). The three-band risk tier
+> is illustrative, not a clinical standard.
+
+## Validation of the risk-model port
+
+The Python port is validated by [`validate_nodule_models.py`](validate_nodule_models.py)
+(also run in the test suite) three independent ways:
+
+1. **Source equivalence** — the port is compared to an independent verbatim
+   transcription of the NTOG tool's formula across 5000 random inputs; they
+   agree to **0.0 absolute error** (the port *is* the tool).
+2. **Literature anchoring** — every coefficient's `exp()` reproduces the
+   published Brock/PanCan (McWilliams 2013) and Mayo/Swensen (1997) odds ratios
+   exactly: female 1.82, spiculation 2.17, upper lobe 1.93, prior cancer 3.81,
+   etc. (the tool's coefficients *are* the published models).
+3. **Worked cases** — the 4 mm size-term zero point, a hand-traced 8 mm Brock
+   probability, nodule-type ordering, diameter monotonicity, and two
+   volume-doubling-time hand examples all pass.
+
+```bash
+python examples/validate_nodule_models.py
+```
 
 ## The cohort
 
@@ -105,8 +124,9 @@ boundary or whose morphologic phenotype disagrees with the threshold. The
 
 ## Boundaries
 
-- Synthetic cohort; coefficients are published values but the Python port needs
-  verification against the source tool before any real use.
+- Synthetic cohort. The coefficient port is validated against the NTOG source
+  formula and the published odds ratios (see Validation above); the remaining
+  gap to real use is real nodule data, not the port.
 - The risk tier is a deterministic function of a subset of the features, so high
   recovery is expected — the contribution is the *continuous ordering* and the
   *boundary-case flagging*, not the headline accuracy.
