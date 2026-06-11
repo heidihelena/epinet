@@ -83,6 +83,10 @@ def site_aggregates(
         "n": n,
         "sum": values.sum(axis=0).tolist(),
         "sumsq": (values**2).sum(axis=0).tolist(),
+        # Uncentered second-moment matrix (sum of outer products). Additive across
+        # sites, and sufficient (with sum + n) to reconstruct the pooled
+        # covariance for the Mahalanobis metric — still an aggregate, no per-row.
+        "second_moment": (values.T @ values).tolist(),
         "class_n": class_n,
         "class_sum": class_sum,
         "suppressed": suppressed,
@@ -137,6 +141,18 @@ def combine_aggregates(aggregates: list[dict[str, object]]) -> dict[str, object]
         ]
     ) if classes else np.empty((0, len(kept_columns)))
 
+    # Pooled covariance of the standardized features, for the Mahalanobis metric.
+    # cov(X) = S/n - mean.mean^T (population); cov(Xz) divides by the sd outer
+    # product. This is the EMPIRICAL covariance — exactly federatable. Matching
+    # the production Ledoit-Wolf shrinkage exactly would additionally need
+    # 4th-moment aggregates (noted, not built); this is the unshrunk reconstruction.
+    second_moment = np.sum([np.asarray(agg["second_moment"], dtype=float) for agg in aggregates], axis=0)
+    cov_full = second_moment / total_n - np.outer(mean, mean)
+    cov_kept = cov_full[np.ix_(kept_idx, kept_idx)]
+    cov_z = cov_kept / np.outer(sd_kept, sd_kept)
+    ridge = 1e-6 * np.eye(len(kept_idx))
+    inv_cov = np.linalg.pinv(cov_z + ridge)
+
     return {
         "n_total": total_n,
         "classes": classes,
@@ -145,6 +161,8 @@ def combine_aggregates(aggregates: list[dict[str, object]]) -> dict[str, object]
         "mean": mean_kept,
         "sd": sd_kept,
         "centroids": centroids,
+        "cov_standardized": cov_z,
+        "inv_cov": inv_cov,
     }
 
 
@@ -241,8 +259,9 @@ def local_flip_distances(
     mean = np.asarray(fit["mean"], dtype=float)
     sd = np.asarray(fit["sd"], dtype=float)
     centroids = np.asarray(fit["centroids"], dtype=float)
+    inv_cov = np.asarray(fit["inv_cov"], dtype=float) if metric == "mahalanobis" else None
     Xz = (X[fit["kept_columns"]].to_numpy(dtype=float) - mean) / sd
-    return epinet_contest.flip_distances(Xz, centroids, metric=metric)["flip_distance"]
+    return epinet_contest.flip_distances(Xz, centroids, metric=metric, inv_cov=inv_cov)["flip_distance"]
 
 
 def site_contestability(
@@ -262,11 +281,12 @@ def site_contestability(
     mean = np.asarray(fit["mean"], dtype=float)
     sd = np.asarray(fit["sd"], dtype=float)
     centroids = np.asarray(fit["centroids"], dtype=float)
+    inv_cov = np.asarray(fit["inv_cov"], dtype=float) if metric == "mahalanobis" else None
     classes = list(fit["classes"])
     kept_columns = list(fit["kept_columns"])
 
     Xz = (X[kept_columns].to_numpy(dtype=float) - mean) / sd
-    res = epinet_contest.flip_distances(Xz, centroids, metric=metric)
+    res = epinet_contest.flip_distances(Xz, centroids, metric=metric, inv_cov=inv_cov)
     flip = res["flip_distance"]
     finite = np.isfinite(flip)
     flip_f = flip[finite]

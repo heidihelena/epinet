@@ -1013,9 +1013,11 @@ class FederatedFitTests(unittest.TestCase):
         agg = efed.site_aggregates(X, y)
         # The message carries no per-row data — only counts and summed vectors.
         self.assertEqual(
-            set(agg), {"columns", "n", "sum", "sumsq", "class_n", "class_sum", "suppressed"}
+            set(agg),
+            {"columns", "n", "sum", "sumsq", "second_moment", "class_n", "class_sum", "suppressed"},
         )
         self.assertEqual(len(agg["sum"]), X.shape[1])
+        self.assertEqual(np.asarray(agg["second_moment"]).shape, (X.shape[1], X.shape[1]))
         self.assertEqual(agg["n"], len(X))
         self.assertEqual(sum(agg["class_n"].values()), len(X))
 
@@ -1116,6 +1118,30 @@ class FederatedContestabilityTests(unittest.TestCase):
              "flip_hist", "runner_up_counts", "leverage_sum", "leverage_n",
              "agree_count", "labeled_count"},
         )
+
+    def test_mahalanobis_covariance_federates(self):
+        # The pooled covariance reconstructs from per-site second moments, so the
+        # Mahalanobis flip-distance matches a centralized EMPIRICAL-covariance run
+        # (the unshrunk reference; production Ledoit-Wolf is a separate refinement).
+        X, y, sites = self._design()
+        fit = self._fit(X, y, sites)
+        local = {}
+        for s in sorted(sites.unique()):
+            rows = sites == s
+            fd = efed.local_flip_distances(X.loc[rows], fit, metric="mahalanobis")
+            local.update(dict(zip(X.loc[rows].index, fd)))
+
+        Xz, kept = ec.standardize(X)
+        y_lab = y.reindex(X.index).mask(ecommon.blank_label_mask(y.reindex(X.index)))
+        classes, centroids = ec.class_centroids(Xz, y_lab.reset_index(drop=True))
+        ridge = 1e-6 * np.eye(Xz.shape[1])
+        inv_cov_emp = np.linalg.pinv(np.cov(Xz, rowvar=False, bias=True) + ridge)
+        central = ecn.flip_distances(Xz, centroids, metric="mahalanobis", inv_cov=inv_cov_emp)
+        central_flip = pd.Series(central["flip_distance"], index=X.index)
+
+        fed_flip = pd.Series(local).reindex(X.index).to_numpy()
+        diff = float(np.max(np.abs(fed_flip - central_flip.to_numpy())))
+        self.assertLess(diff, 1e-6)
 
 
 class IngestNormalizationTests(unittest.TestCase):
