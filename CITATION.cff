@@ -16,8 +16,8 @@ authors:
 repository-code: "https://github.com/heidihelena/epinet"
 url: "https://github.com/heidihelena/epinet"
 license: MIT
-version: "0.2.0"
-date-released: "2026-06-11"
+version: "0.2.1"
+date-released: "2026-06-12"
 keywords:
   - "network analysis"
   - "feature-space clustering"

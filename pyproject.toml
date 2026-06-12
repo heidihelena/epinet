@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "epinet"
-version = "0.2.0"
+version = "0.2.1"
 description = "General node/edge network analysis toolkit: graph features, semi-supervised outcome modeling, shortest paths, and feature-space centroid clustering."
 readme = "README.md"
 license = { file = "LICENSE" }
