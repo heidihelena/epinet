@@ -1,4 +1,4 @@
-# EpiNet
+# EpiNet — the Epistemic Network toolkit
 
 [![Tests](https://github.com/heidihelena/epinet/actions/workflows/tests.yml/badge.svg)](https://github.com/heidihelena/epinet/actions/workflows/tests.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -6,12 +6,15 @@
 <!-- After cutting a Zenodo release, add: [![DOI](https://zenodo.org/badge/DOI/<doi>.svg)](https://doi.org/<doi>) -->
 
 EpiNet is a **transparent node/edge network and feature-space analysis toolkit**
-for graph-shaped datasets. You load entities and relationships from CSVs and it
-computes graph features, *honestly* evaluates an outcome model, finds shortest
-paths, clusters nodes by feature-space centroid, and scores how **contestable**
-each call is — with publication-quality figures and a model card. Epidemiology
-is one use case; the core is domain-neutral (driven through lung-cancer quality
-indicators, lung-nodule risk, and lymphoma subtyping).
+for graph-shaped datasets. The name reads *Epistemic Network*: the core question
+is not just "what does the model predict" but how well-founded each call is — how
+contestable, how calibrated, how well it transports. You load entities and
+relationships from CSVs and it computes graph features, *honestly* evaluates an
+outcome model, finds shortest paths, clusters nodes by feature-space centroid,
+and scores how **contestable** each call is — with publication-quality figures
+and a model card. Epidemiology is one use case; the core is domain-neutral
+(driven through lung-cancer quality indicators, lung-nodule risk, and lymphoma
+subtyping).
 
 > **Scope.** This is a **research and education demonstrator, not clinical or
 > public-health decision support.** Any model it produces must be validated on
@@ -22,7 +25,7 @@ What distinguishes EpiNet from a thin scikit-learn wrapper is that **honest
 evaluation is the default path**: a label-permutation null, calibration, and
 (where appropriate) community-aware splitting run alongside the headline metric,
 so a good score reflects real signal rather than leakage or chance. Developed as
-part of **Vahian**; MIT licensed.
+part of **Vahtian**; MIT licensed.
 
 ## What it looks like
 
@@ -56,6 +59,9 @@ Ki67, …). The same lens runs on any cohort. More figures in
   from per-site aggregates only, behind a fail-closed governance gate. See
   [docs/federated.md](docs/federated.md) and
   [docs/governance-and-consent.md](docs/governance-and-consent.md).
+- **Baselines & external validation** — compare graph features against a
+  node-embedding baseline and a no-information floor under the same harness, and
+  validate a model on an independent cohort. See [docs/validation.md](docs/validation.md).
 
 ## Install
 
@@ -110,6 +116,8 @@ The data format is documented in [Data-format.md](Data-format.md).
 - **[docs/governance-and-consent.md](docs/governance-and-consent.md)** — what the
   governance gate enforces vs what remains a policy/legal responsibility
   (explicitly non-legal).
+- **[docs/validation.md](docs/validation.md)** — representation baselines (incl. a
+  node-embedding comparison) and external validation: does the model transport?
 
 Each worked example also has a builder script and a walkthrough under
 `examples/*_usecase.md`; the federated and governance pipelines have runnable

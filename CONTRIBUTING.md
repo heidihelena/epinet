@@ -1,37 +1,64 @@
-# Contributing to EpiNet Analysis
+# Contributing to EpiNet
 
-We welcome contributions to the EpiNet Analysis project and are grateful for every contribution made by the community.
+Thanks for your interest in EpiNet — the Epistemic Network toolkit. EpiNet is a
+research and education demonstrator, and contributions that keep it honest,
+inspectable, and conservatively evaluated are especially welcome.
 
-## How to Contribute
+## Reporting issues
 
-### Reporting Issues
+Open a GitHub issue (check for an existing one first). Three kinds of report are
+particularly valuable:
 
-If you find a bug or have a feature request, please create an issue on GitHub. Before creating an issue, check to make sure one doesn't already exist.
+- **Bugs** — include the command or call, the input shape, and the full error.
+- **Scientific errors** — if a metric, a statistical identity (e.g. the
+  closed-form flip-distance or the additive reconstruction of the scaler and
+  centroids), or a methodological claim looks wrong, please say so. A minimal
+  reproduction and the expected versus observed value help most.
+- **Governance / security / privacy concerns** — if you spot a way the governance
+  gate could disclose more than intended (e.g. small-cell leakage, an unhandled
+  payload shape), please report it. For sensitive disclosures, mark the issue
+  accordingly or contact the maintainer directly rather than posting details
+  publicly.
 
-### Making Changes
+## Running the examples and tests
 
-To contribute to the project, follow these steps:
+```bash
+pip install -e ".[dev]"
+python -m unittest discover -s tests      # or: pytest  (adds the hypothesis property tests)
+ruff check .
+```
 
-1. Fork the repository.
-2. Clone your fork to your local machine.
-3. Create a new branch for your changes.
-4. Make your changes and commit them with clear, descriptive messages.
-5. Push your changes to your fork.
-6. Submit a pull request to the main repository.
+The runnable demonstrations under `examples/` (federated, governance, registry,
+nodule, lymphoma, baselines, external validation, …) are the quickest way to see
+expected behaviour and outputs; each prints what it checked.
 
-### Pull Request Guidelines
+## Making changes
 
-- Ensure your code adheres to the project's coding standards.
-- Write tests for any new functionality and run existing tests to ensure they pass.
-- Update the documentation to reflect your changes if necessary.
-- Describe your changes in detail in the pull request description.
+1. Fork and branch.
+2. Make the change with clear, descriptive commits.
+3. **Add or update tests.** New analytic behaviour should be pinned by a test —
+   ideally against a known closed form or a centralized reference, in the style of
+   the existing suite.
+4. Run the tests and `ruff check .`; keep CI green (Python 3.10–3.12).
+5. Update the relevant docs (`README.md`, `docs/*`) when behaviour or interfaces
+   change.
+6. Open a pull request describing the change and how you verified it.
+
+## What counts as acceptable validation
+
+EpiNet's value is its conservatism, so new claims must be earned:
+
+- numerical results checked against a closed form, a centralized computation, or
+  an independent implementation where possible;
+- evaluation that does not leak (use the leakage-aware splitting and the
+  permutation null);
+- honest scope — keep the "research demonstrator, not clinical decision support"
+  framing, and do not add wording that implies regulatory compliance.
 
 ## Conduct
 
-We are committed to providing a welcoming and inspiring community for all. By participating in this project, you agree to abide by its code of conduct.
+By participating you agree to keep the project a welcoming, respectful space.
 
 ## Questions?
 
-If you have any questions or need further clarification, feel free to reach out to the project maintainers.
-
-Thank you for contributing to EpiNet Analysis!
+Open an issue or reach out to the maintainer. Thank you for contributing.

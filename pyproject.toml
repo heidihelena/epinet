@@ -4,11 +4,11 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "epinet"
-version = "0.2.0"
+version = "0.2.1"
 description = "General node/edge network analysis toolkit: graph features, semi-supervised outcome modeling, shortest paths, and feature-space centroid clustering."
 readme = "README.md"
 license = { file = "LICENSE" }
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 authors = [{ name = "EpiNet contributors" }]
 keywords = ["network-analysis", "graph", "centroid-clustering", "epidemiology", "quality-indicators"]
 
@@ -45,6 +45,8 @@ py-modules = [
     "epinet_federated",
     "epinet_registry",
     "epinet_governance",
+    "epinet_baselines",
+    "epinet_validation",
 ]
 
 [tool.pytest.ini_options]
@@ -52,7 +54,7 @@ testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 110
-target-version = "py39"
+target-version = "py310"
 # Superseded prototypes, kept for reference only (see README); not maintained.
 extend-exclude = ["epinet-analysis.py", "epinet-analysis-v2.py"]
 
