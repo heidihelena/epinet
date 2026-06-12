@@ -43,7 +43,7 @@ Ki67, …). The same lens runs on any cohort. More figures in
   isolate flag, optional betweenness/closeness/PageRank.
 - **Honest outcome model** — RandomForest over graph features + node attributes,
   with discrimination (AUROC, AUPRC), classification (balanced accuracy, MCC, F1),
-  **calibration** (Brier, slope/intercept), bootstrap CIs, permutation importance,
+  **calibration** (Brier always; slope/intercept for binary outcomes), bootstrap CIs, permutation importance,
   a label-permutation null, community-aware splitting, small-cohort warnings, a
   reproducibility `provenance` block, and a TRIPOD+AI-flavoured `model_card.md`.
 - **Shortest paths** — from sources to target nodes or target-outcome nodes, with

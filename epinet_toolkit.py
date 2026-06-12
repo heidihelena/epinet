@@ -663,6 +663,22 @@ def train_outcome_model(
             "pos_label": pos_label,
             "brier": _first("brier"),
         }
+    elif primary_proba is not None:
+        # Multiclass: the Cox calibration slope/intercept are defined for a
+        # binary risk score only. Report the (multiclass) Brier so calibration is
+        # never silently absent, and state explicitly why slope/intercept are
+        # omitted rather than dropping the whole block.
+        metrics["calibration"] = {
+            "brier": _first("brier"),
+            "slope": None,
+            "intercept": None,
+            "positive_class": None,
+            "note": (
+                "Multiclass outcome: 'brier' is the multiclass sum-of-squares "
+                "(lower is better); calibration slope/intercept (Cox) are defined "
+                "for binary outcomes only and are not computed here."
+            ),
+        }
 
     # Within-split uncertainty: percentile bootstrap on the primary held-out set.
     if n_bootstrap > 0 and primary_proba is not None:

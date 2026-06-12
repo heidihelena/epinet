@@ -108,11 +108,14 @@ def model_card(metrics: dict, *, title: str = "EpiNet outcome model") -> str:
         out += [f"_{metrics['split_note']}_", ""]
 
     # 4. Performance — discrimination, classification, calibration.
+    multiclass = int(metrics.get("n_classes", 2)) > 2
+    auroc_label = "AUROC (macro OvR)" if multiclass else "AUROC"
+    ap_label = "Average precision (macro)" if multiclass else "Average precision (AUPRC)"
     out += ["## Performance", "", "### Discrimination & classification", ""]
     perf_rows = []
     for key, label in [
-        ("roc_auc", "AUROC"),
-        ("average_precision", "Average precision (AUPRC)"),
+        ("roc_auc", auroc_label),
+        ("average_precision", ap_label),
         ("balanced_accuracy", "Balanced accuracy"),
         ("mcc", "Matthews corr. coef."),
         ("f1_weighted", "F1 (weighted)"),
@@ -123,7 +126,7 @@ def model_card(metrics: dict, *, title: str = "EpiNet outcome model") -> str:
     out += [_table(["metric", "value"], perf_rows), ""]
 
     out += ["### Calibration", ""]
-    if calibration:
+    if calibration and calibration.get("slope") is not None:
         out += [
             _table(
                 ["metric", "value"],
@@ -133,6 +136,18 @@ def model_card(metrics: dict, *, title: str = "EpiNet outcome model") -> str:
                     ["Calibration intercept (ideal 0)", _fmt(calibration.get("intercept"))],
                     ["Positive class", _fmt(calibration.get("positive_class"))],
                 ],
+            ),
+            "",
+            f"_{calibration.get('note', '')}_",
+            "",
+        ]
+    elif calibration:
+        # Multiclass: Brier is defined, slope/intercept are not. Report Brier and
+        # say so explicitly rather than printing empty slope/intercept rows.
+        out += [
+            _table(
+                ["metric", "value"],
+                [["Brier score (lower better)", _fmt(calibration.get("brier")) + _ci_text(ci, "brier")]],
             ),
             "",
             f"_{calibration.get('note', '')}_",

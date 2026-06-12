@@ -15,6 +15,7 @@ import epinet_common as ecommon
 import epinet_contest as ecn
 import epinet_federated as efed
 import epinet_governance as eg
+import epinet_report
 import epinet_toolkit as et
 import epinet_validation as exv
 import epinet_viz as ev
@@ -859,6 +860,39 @@ class ScientificStandardsTests(unittest.TestCase):
         edges = pd.DataFrame([{"SourceID": f"N{i}", "TargetID": f"N{i + 1}"} for i in range(n - 1)])
         graph = et.build_graph(nodes, edges)
         return nodes, et.generate_graph_features(graph)
+
+    def _multiclass_cohort(self, n=60, seed=0):
+        rng = np.random.default_rng(seed)
+        rows = [
+            {"ID": f"N{i}", "Outcome": ["a", "b", "c"][i % 3],
+             "Value": float(rng.normal((i % 3) * 3.0, 1.0))}
+            for i in range(n)
+        ]
+        nodes = pd.DataFrame(rows)
+        edges = pd.DataFrame([{"SourceID": f"N{i}", "TargetID": f"N{i + 1}"} for i in range(n - 1)])
+        graph = et.build_graph(nodes, edges)
+        return nodes, et.generate_graph_features(graph)
+
+    def test_multiclass_calibration_block_is_present_and_honest(self):
+        # Calibration must not be silently absent for multiclass: Brier is
+        # reported, slope/intercept are explicitly None with a stated reason.
+        nodes, features = self._multiclass_cohort()
+        with tempfile.TemporaryDirectory() as td:
+            result = et.train_outcome_model(
+                nodes, features, id_column="ID", outcome_column="Outcome",
+                output_dir=Path(td), n_iterations=2,
+            )
+            m = result["metrics"]
+            self.assertGreater(m["n_classes"], 2)
+            self.assertIn("calibration", m)                      # not silently dropped
+            self.assertIsNotNone(m["calibration"]["brier"])      # Brier still reported
+            self.assertIsNone(m["calibration"]["slope"])         # binary-only, explicit
+            self.assertIsNone(m["calibration"]["intercept"])
+            self.assertIn("binary outcomes only", m["calibration"]["note"])
+            # The model card surfaces it without empty slope/intercept rows.
+            card = epinet_report.model_card(m)
+            self.assertIn("AUROC (macro OvR)", card)
+            self.assertNotIn("Calibration slope (ideal 1)", card)
 
     def test_discrimination_and_calibration_metrics_reported(self):
         nodes, features = self._binary_cohort()

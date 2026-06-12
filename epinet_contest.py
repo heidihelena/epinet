@@ -307,6 +307,12 @@ def contestability_report(
         f"cases · {flip['n_contested']} contested "
         f"(flip-distance ≤ {threshold_text}, lowest {flip['contest_quantile']:.0%}).",
         "",
+        "> **Read this first.** Flip-distance is in *standardized-feature* units: it is "
+        "decision-relevant only when smaller than the real-world measurement error of "
+        "the features in the same units (comparing it to assay/measurement variability "
+        "is your step). It measures the **classifier's fragility, not ground truth** — a "
+        "small value says the model is unsure here, not that the case is truly borderline.",
+        "",
         "## Most contested cases",
         "",
         "The calls nearest to flipping, with the single feature that would most "
