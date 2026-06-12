@@ -234,14 +234,30 @@ def _split_indices(
 ) -> tuple[np.ndarray, np.ndarray]:
     if groups is not None:
         splitter = GroupShuffleSplit(n_splits=1, test_size=test_size, random_state=random_state)
-        return next(splitter.split(X, y, groups))
-    indices = np.arange(len(X))
-    train_idx, test_idx = train_test_split(
-        indices,
-        test_size=test_size,
-        random_state=random_state,
-        stratify=y if stratify_ok else None,
-    )
+        train_idx, test_idx = next(splitter.split(X, y, groups))
+    else:
+        indices = np.arange(len(X))
+        train_idx, test_idx = train_test_split(
+            indices,
+            test_size=test_size,
+            random_state=random_state,
+            stratify=y if stratify_ok else None,
+        )
+    # Scientific guardrail: a training fold missing an outcome class can never
+    # predict it, so every downstream metric would quietly score the model
+    # against a class it has not seen. With grouped (community) splits this
+    # happens exactly when an outcome class is confined to held-out
+    # communities — the communities are outcome-confounded and a "leakage-
+    # aware" split there is misleading, not honest. Refuse rather than report.
+    missing = sorted(str(c) for c in set(y.unique()) - set(y.iloc[train_idx].unique()))
+    if missing:
+        kind = "community/grouped" if groups is not None else "random"
+        raise ValueError(
+            f"training fold from the {kind} split is missing outcome class(es) "
+            f"{missing}. With community splits this means communities are "
+            "outcome-confounded (a class lives entirely in held-out groups); "
+            "use random splits or revisit the grouping."
+        )
     return train_idx, test_idx
 
 
