@@ -29,7 +29,7 @@ Given two CSVs:
 | file | required columns | optional columns |
 |---|---|---|
 | `human.csv` | `item_id`, `human_label` | — |
-| `judge.csv` | `item_id`, `judge_label` | `judge_confidence` ∈ [0, 1], any numeric `criterion_*` rubric scores |
+| `judge.csv` | `item_id`, `judge_label` | `judge_confidence` ∈ [0, 1], any numeric `criterion_*` rubric scores, any categorical `group_*` strata |
 
 ```python
 import epinet_llmvahti as elv
@@ -59,6 +59,15 @@ it produces `judge_audit.md`, `judge_audit.json`, and per-verdict
    default), criterion-level value-of-information ("which rubric criterion
    drives verdict flips"), and the headline table — verdicts that are **both
    contested and human-disagreeing**, i.e. the calls to re-review first.
+
+5. **Subgroup error funnel** — for each categorical `group_*` column, an
+   exploratory differential-error screen: per-stratum judge-vs-human
+   disagreement rates against funnel control limits around the pooled rate at
+   each stratum's size (the quality-indicator funnel, pointed at the judge).
+   Strata outside the outer 99.8% limit flag `high`/`low`; inner 95%
+   excursions are reported but not flagged, since with many strata some are
+   expected by chance. A flag says "unusual given size" — it is not proof of
+   causal bias, and it inherits the limitations of the human standard.
 
 ## Design notes and limits
 
