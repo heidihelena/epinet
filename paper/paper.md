@@ -44,7 +44,7 @@ cross-validated accuracy that in fact reflects leakage or chance, and to ship a
 risk score that discriminates well but is badly calibrated. EpiNet is built
 around those failure modes: leakage-aware (community) splitting, a permutation
 null measured against chance, calibration reported alongside discrimination,
-honest within- and across-split uncertainty, and a closed-form measure of how
+honest within- and across-split uncertainty [@nadeau2003], and a closed-form measure of how
 contestable a boundary call is — the smallest move in standardized feature space
 that flips a nearest-centroid (Rocchio) classification [@tibshirani2002], with a
 per-feature value-of-information ranking that names the cheapest measurement that
@@ -57,9 +57,10 @@ examples.
 
 Existing tools solve parts of this workflow but not the assembly. Graph
 construction and graph measures are provided by general libraries such as
-NetworkX [@networkx], igraph, and graph-tool, and learned graph representations
-by PyTorch Geometric; model fitting, calibration, and validation by scikit-learn
-[@scikit-learn] and statsmodels; and distributed analysis by federated frameworks
+NetworkX [@networkx], igraph [@igraph], and graph-tool [@graphtool], and learned
+graph representations by PyTorch Geometric [@pyg]; model fitting, calibration, and
+validation by scikit-learn [@scikit-learn] and statsmodels [@statsmodels]; and
+distributed analysis by federated frameworks
 such as DataSHIELD [@datashield] and federated-learning libraries [@rieke2020].
 EpiNet is *not* better at graph algorithms than NetworkX nor at modelling than
 scikit-learn. Its contribution is the opinionated integration of graph-shaped
@@ -107,7 +108,7 @@ The repository includes runnable demonstrations for synthetic and small
 biomedical-style cohorts — nodule risk, lymphoma subtyping, a registry adapter,
 federated contestability, and governance-mediated egress — together with
 representation baselines (including a learned node-embedding comparison) and an
-external-validation harness. The v0.2.0 release freezes these materials as a
+external-validation harness. The v0.3.0 release freezes these materials as a
 citation snapshot with CI-tested examples (Python 3.10–3.12) and documented
 methodological limits. Its near-term significance is to give reviewers, students,
 and registry-methods researchers an executable reference workflow for identifying
@@ -127,6 +128,7 @@ centroids), and revised before release.
 
 # Acknowledgements
 
-EpiNet is developed as part of Vahtian.
+EpiNet is developed as part of Vahtian, alongside the companion project
+*citevahti* (reproducible citation and provenance tooling).
 
 # References
