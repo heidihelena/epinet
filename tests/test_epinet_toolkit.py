@@ -668,6 +668,38 @@ class ContestabilityTests(unittest.TestCase):
         self.assertEqual(res["nearest"].tolist(), [0, 0, 0])
         self.assertEqual(res["runner_up"].tolist(), [1, 1, 1])
 
+    def test_single_axis_flip_distance_is_metric_correct_under_mahalanobis(self):
+        # The single-axis flip distance must be the *metric* length of the move to
+        # the binding boundary, i.e. include the sqrt(M_jj) factor. Verify against
+        # a direct linear-boundary computation for the (nearest, runner_up) pair.
+        rng = np.random.default_rng(7)
+        for _ in range(5):
+            a = rng.normal(size=(3, 3))
+            M = a @ a.T + 0.5 * np.eye(3)  # SPD precision
+            cents = rng.normal(size=(3, 3))
+            x = rng.normal(size=3)
+            res = ecn.flip_distances(x.reshape(1, -1), cents, metric="mahalanobis", inv_cov=M)
+            ci, ri = int(res["nearest"][0]), int(res["runner_up"][0])
+            j = int(res["most_relevant_feature"][0])
+
+            def margin(p):
+                return (p - cents[ri]) @ M @ (p - cents[ri]) - (p - cents[ci]) @ M @ (p - cents[ci])
+
+            e = np.zeros(3); e[j] = 1.0
+            m0 = margin(x)
+            dm = (margin(x + 1e-6 * e) - m0) / 1e-6
+            true_len = abs(-m0 / dm) * np.sqrt(M[j, j])  # |t| * sqrt(M_jj)
+            self.assertAlmostEqual(float(res["single_axis_flip_distance"][0]), true_len, places=5)
+
+    def test_contestability_refuses_nan_features(self):
+        X = pd.DataFrame(
+            {"f1": [0.0, 1.0, np.nan, 5.0, 5.1], "f2": [0.0, 0.1, 0.2, 5.0, 5.2]},
+            index=[f"n{i}" for i in range(5)],
+        )
+        y = pd.Series(["a", "a", "a", "b", "b"], index=X.index)
+        with self.assertRaises(ValueError):
+            ecn.contestability(X, y=y, metric="euclidean")
+
     def test_value_of_information_picks_the_separating_axis(self):
         # Centroids differ only on feature index 1 -> that is the decisive axis,
         # and a single-axis flip along it equals the full flip-distance.
@@ -1301,8 +1333,34 @@ class GovernanceGateTests(unittest.TestCase):
             self._payload(), policy=policy, consent=self._consent(), now=self.NOW)
         self.assertNotIn("rare", redacted["class_n"])     # suppressed (3 < 5)
         self.assertIn("common", redacted["class_n"])
-        self.assertEqual(manifest["suppressed_cells"], ["class_n[rare]=3"])
+        self.assertIn("class_n[rare]=3", manifest["suppressed_cells"])
         self.assertEqual(len(manifest["payload_sha256"]), 64)
+
+    def test_suppression_survives_complementary_subtraction(self):
+        # The suppressed cell must not be recoverable as total - sum(retained).
+        policy = eg.DisclosurePolicy(min_cell=5)
+        redacted, manifest = eg.check_egress(
+            self._payload(common=40, rare=3), policy=policy,
+            consent=self._consent(), now=self.NOW)
+        retained = sum(redacted["class_n"].values())
+        self.assertEqual(redacted["n"], retained)          # total reduced to retained sum
+        self.assertEqual(manifest["record_count"], retained)
+        self.assertEqual(redacted["n"] - retained, 0)      # nothing to subtract
+        self.assertTrue(any("block subtraction" in s for s in manifest["suppressed_cells"]))
+
+    def test_record_floor_uses_true_total_not_reduced(self):
+        # A genuinely tiny aggregate is refused on its TRUE total, even though
+        # secondary suppression would otherwise shrink the disclosed total.
+        policy = eg.DisclosurePolicy(min_cell=5)
+        with self.assertRaises(eg.GovernanceError):
+            eg.check_egress({"n": 4, "class_n": {"a": 4}}, policy=policy,
+                            consent=self._consent(), now=self.NOW)
+
+    def test_malformed_expiry_fails_closed_with_governance_error(self):
+        policy = eg.DisclosurePolicy(min_cell=5)
+        with self.assertRaises(eg.GovernanceError):
+            eg.check_egress(self._payload(), policy=policy,
+                            consent=self._consent(expires="not-a-date"), now=self.NOW)
 
     def test_missing_required_field_is_refused(self):
         with self.assertRaises(eg.GovernanceError):

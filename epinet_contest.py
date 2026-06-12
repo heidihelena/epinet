@@ -73,12 +73,16 @@ def flip_distances(
     - ``nearest`` / ``runner_up`` — index of the assigned class and of the class
       whose boundary is nearest (the one a flip would cross),
     - ``flip_distance`` — distance to that nearest boundary, in metric units,
-    - ``most_relevant_feature`` — index of the feature the decision is most
-      sensitive to (largest margin-gradient component),
-    - ``single_axis_flip_distance`` — how far that one feature alone must move to
-      flip the call,
-    - ``leverage`` — |margin gradient| per feature (the value-of-information
-      weights), and ``distances`` — the full sample-to-centroid distance matrix.
+    - ``most_relevant_feature`` — the feature the decision is most sensitive to,
+      ranked by ``|grad_j| / sqrt(M_jj)`` so the ranking is correct in the metric
+      (the cheapest single-axis move to the binding boundary), not just Euclidean,
+    - ``single_axis_flip_distance`` — the metric length of the move along that one
+      feature needed to flip the call, measured against the binding (nearest,
+      runner_up) boundary. If a *third* class is nearer along that axis the true
+      flip can be shorter; this is an upper bound for the binding pair,
+    - ``leverage`` — ``|margin gradient| / sqrt(M_jj)`` per feature (the
+      metric-correct value-of-information weights), and ``distances`` — the full
+      sample-to-centroid distance matrix.
     """
     centroids = np.atleast_2d(centroids)
     n_samples, n_features = Xz.shape
@@ -108,18 +112,25 @@ def flip_distances(
     flip_distance = np.clip(to_boundary[rows, runner_up], 0.0, None)
 
     # Per-feature value-of-information for the binding (nearest, runner_up) pair.
-    # The margin m(x) = d_runner**2 - d_nearest**2 has gradient 2 * M (c_a - c_b),
-    # so the feature with the largest |gradient| component is the one the decision
-    # is most sensitive to, and a single-axis flip along it costs m / (2|grad_j|).
+    # The margin m(x) = d_runner**2 - d_nearest**2 has gradient 2 * M (c_a - c_b).
+    # A single-axis move of raw size t along feature j has *metric* length
+    # |t|*sqrt(M_jj), and reaches the boundary at |t| = m / (2|grad_j|). So the
+    # flip cost in the same units as flip_distance is (m/2) * sqrt(M_jj)/|grad_j|,
+    # and the cheapest axis to flip maximizes |grad_j| / sqrt(M_jj). For the
+    # Euclidean metric (M = I, sqrt(M_jj) = 1) this reduces to |grad_j|.
     metric_matrix = inv_cov if metric == "mahalanobis" else np.eye(n_features)
+    metric_diag = np.sqrt(np.clip(np.diag(metric_matrix), 1e-12, None))  # sqrt(M_jj)
     centroid_diff = centroids[nearest] - centroids[runner_up]  # c_a - c_b
     grad = centroid_diff @ metric_matrix
-    leverage = np.abs(grad)
+    abs_grad = np.abs(grad)
+    leverage = abs_grad / metric_diag  # value of information per feature (metric-correct)
     most_relevant_feature = leverage.argmax(axis=1)
     margin = distances[rows, runner_up] ** 2 - d_a**2  # >= 0
-    top_grad = leverage[rows, most_relevant_feature]
+    top_grad = abs_grad[rows, most_relevant_feature]
+    top_diag = metric_diag[most_relevant_feature]
     with np.errstate(divide="ignore", invalid="ignore"):
-        single_axis = margin / (2.0 * top_grad)
+        # raw step m/(2|grad_j|) scaled to metric length by sqrt(M_jj).
+        single_axis = margin / (2.0 * top_grad) * top_diag
     single_axis = np.where(np.isfinite(single_axis), single_axis, np.inf)
 
     return {
@@ -153,6 +164,17 @@ def contestability(
     """
     if not 0.0 < contest_quantile < 1.0:
         raise ValueError("contest_quantile must be in (0, 1)")
+
+    # Missing features silently poison centroids (NaN mean) and produce all-inf
+    # flip-distances; refuse rather than return a confidently-wrong "nothing is
+    # contestable". The caller must impute or drop deliberately.
+    numeric = X.select_dtypes(include=[np.number])
+    nan_cols = [c for c in numeric.columns if numeric[c].isna().any()]
+    if nan_cols:
+        raise ValueError(
+            "Contestability requires non-missing numeric features; NaN found in "
+            f"columns {nan_cols[:10]}. Impute or drop these before scoring."
+        )
 
     Xz, kept_columns = ec.standardize(X)
     if Xz.shape[0] < 2 or not kept_columns:

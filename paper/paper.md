@@ -9,8 +9,8 @@ tags:
   - reproducibility
 authors:
   - name: "Heidi Andersén"
+    orcid: 0000-0001-5923-5865
     affiliation: 1
-    # orcid: 0000-0000-0000-0000   # add before submission
 affiliations:
   - name: Vahtian
     index: 1
