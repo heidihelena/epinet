@@ -9,12 +9,14 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+import epinet_baselines as eb
 import epinet_cluster as ec
 import epinet_common as ecommon
 import epinet_contest as ecn
 import epinet_federated as efed
 import epinet_governance as eg
 import epinet_toolkit as et
+import epinet_validation as exv
 import epinet_viz as ev
 
 
@@ -1144,6 +1146,66 @@ class FederatedContestabilityTests(unittest.TestCase):
         fed_flip = pd.Series(local).reindex(X.index).to_numpy()
         diff = float(np.max(np.abs(fed_flip - central_flip.to_numpy())))
         self.assertLess(diff, 1e-6)
+
+
+class BaselineAndValidationTests(unittest.TestCase):
+    """Representation baselines and external validation."""
+
+    def _two_community_graph(self):
+        # Two rings (communities) joined by one bridge; outcome = community.
+        # Degree/clustering are ~constant, so graph-topology features carry little;
+        # a node embedding that recovers the community structure should win.
+        ids_a = [f"a{i}" for i in range(12)]
+        ids_b = [f"b{i}" for i in range(12)]
+        nodes = pd.DataFrame(
+            [{"ID": i, "Outcome": 0} for i in ids_a]
+            + [{"ID": i, "Outcome": 1} for i in ids_b]
+        )
+
+        def ring(ids):
+            return [{"SourceID": ids[i], "TargetID": ids[(i + 1) % len(ids)]} for i in range(len(ids))]
+
+        edges = pd.DataFrame(ring(ids_a) + ring(ids_b) + [{"SourceID": "a0", "TargetID": "b0"}])
+        return nodes, edges
+
+    def test_spectral_embedding_shape(self):
+        nodes, edges = self._two_community_graph()
+        graph = et.build_graph(nodes, edges)
+        emb = eb.spectral_node_embeddings(graph, n_components=4, seed=0)
+        self.assertEqual(emb.shape[0], 24)
+        self.assertIn("ID", emb.columns)
+        self.assertEqual(sum(c.startswith("spectral_") for c in emb.columns), 4)
+
+    def test_compare_representations_floors_and_beats(self):
+        nodes, edges = self._two_community_graph()
+        result = eb.compare_representations(
+            nodes, edges, n_components=4, n_iterations=3, random_state=0,
+        )
+        comp = result["comparison"].set_index("representation")
+        self.assertIn("no_information", comp.index)
+        self.assertIn("spectral_embedding", comp.index)
+        # No-information is a chance-level floor; the embedding clears it.
+        self.assertLessEqual(comp.loc["no_information", "roc_auc"], 0.7)
+        self.assertGreater(comp.loc["spectral_embedding", "roc_auc"], 0.75)
+
+    def test_external_validation_reports_internal_external_drift(self):
+        dev_nodes, dev_edges = self._two_community_graph()
+        ext_nodes, ext_edges = self._two_community_graph()
+        result = exv.external_validation(dev_nodes, dev_edges, ext_nodes, ext_edges, random_state=0)
+        self.assertIn("roc_auc", result["external"])
+        self.assertIn("roc_auc", result["internal"])
+        self.assertIn("roc_auc", result["drift_internal_minus_external"])
+        self.assertEqual(result["external"]["n_external"], 24)
+
+    def test_external_validation_aligns_missing_columns(self):
+        # External cohort built the same way still validates (column alignment path).
+        dev_nodes, dev_edges = self._two_community_graph()
+        ext_nodes, ext_edges = self._two_community_graph()
+        with tempfile.TemporaryDirectory() as td:
+            result = exv.external_validation(
+                dev_nodes, dev_edges, ext_nodes, ext_edges, random_state=0, output_dir=Path(td))
+            self.assertTrue((Path(td) / "external_validation.json").exists())
+            self.assertIsNotNone(result["external"]["balanced_accuracy"])
 
 
 class FederatedEgressTests(unittest.TestCase):
