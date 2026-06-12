@@ -85,8 +85,15 @@ class Consent:
             raise GovernanceError(f"consent missing required fields: {missing}")
         if not self.coi_acknowledged:
             raise GovernanceError("conflict-of-interest not acknowledged (coi_acknowledged=False)")
-        if self.expires is not None and date.fromisoformat(self.expires) < now:
-            raise GovernanceError(f"consent expired on {self.expires}")
+        if self.expires is not None:
+            try:
+                expiry = date.fromisoformat(self.expires)
+            except (ValueError, TypeError) as exc:
+                # A malformed expiry must refuse (fail closed) with the documented
+                # error type, not crash with a bare ValueError.
+                raise GovernanceError(f"consent expiry {self.expires!r} is not an ISO date") from exc
+            if expiry < now:
+                raise GovernanceError(f"consent expired on {self.expires}")
         if _tier_rank(tier) > _tier_rank(self.allowed_tier):
             raise GovernanceError(
                 f"tier {tier!r} exceeds consent allowance {self.allowed_tier!r}"
@@ -141,6 +148,26 @@ def suppress_small_cells(payload: dict, min_cell: int) -> tuple[dict, list[str]]
             if int(n) < min_cell:
                 redacted["runner_up_counts"].pop(cls, None)
                 suppressed.append(f"runner_up_counts[{cls}]={n}")
+
+    # Secondary (complementary) suppression: a published total that equals the
+    # sum of a group's cells lets a suppressed cell be recovered by subtraction
+    # (total - sum(retained)). Where we suppressed any cell in a group, reduce
+    # the matching total(s) to the retained sum so nothing is recoverable.
+    def _block_subtraction(group_key: str, total_keys: tuple[str, ...]) -> None:
+        original = payload.get(group_key)
+        if not isinstance(original, dict):
+            return
+        orig_sum = sum(int(v) for v in original.values())
+        retained_sum = sum(int(v) for v in redacted.get(group_key, {}).values())
+        if retained_sum == orig_sum:
+            return  # nothing suppressed in this group
+        for tk in total_keys:
+            if isinstance(redacted.get(tk), (int, float)) and int(redacted[tk]) == orig_sum:
+                redacted[tk] = retained_sum
+                suppressed.append(f"{tk} reduced {orig_sum}->{retained_sum} (block subtraction)")
+
+    _block_subtraction("class_n", ("n", "labeled_count"))
+    _block_subtraction("runner_up_counts", ("flip_count", "n_scored", "n"))
 
     return redacted, suppressed
 
@@ -214,18 +241,21 @@ def check_egress(
     if hits:
         raise GovernanceError(f"payload contains identifying fields: {hits[:5]}")
 
-    redacted, suppressed = suppress_small_cells(payload, policy.min_cell)
-
-    n = _record_count(redacted)
-    if n and n < policy.min_cell:
+    # Enforce the record floor on the TRUE total (before secondary suppression
+    # reduces the disclosed total), so neutralising a leak-prone total cannot
+    # also weaken the floor check.
+    total_n = _record_count(payload)
+    if total_n and total_n < policy.min_cell:
         raise GovernanceError(
-            f"aggregate covers {n} records (< min_cell={policy.min_cell}); refused"
+            f"aggregate covers {total_n} records (< min_cell={policy.min_cell}); refused"
         )
+
+    redacted, suppressed = suppress_small_cells(payload, policy.min_cell)
 
     manifest = {
         "tier": tier,
         "fields_disclosed": sorted(redacted.keys()),
-        "record_count": n,
+        "record_count": _record_count(redacted),
         "suppressed_cells": suppressed,
         "min_cell": policy.min_cell,
         "controller": consent.controller,
