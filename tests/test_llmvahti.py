@@ -127,6 +127,61 @@ class AuditResultTests(unittest.TestCase):
         self.assertIn("human standard", self.results["caveats"][0])
 
 
+class SubgroupErrorFunnelTests(unittest.TestCase):
+    def test_normal_quantile_matches_known_values(self):
+        self.assertAlmostEqual(elv._normal_quantile(0.975), 1.959964, places=5)
+        self.assertAlmostEqual(elv._normal_quantile(0.999), 3.090232, places=5)
+        self.assertAlmostEqual(elv._normal_quantile(0.5), 0.0, places=9)
+        self.assertAlmostEqual(elv._normal_quantile(0.01), -elv._normal_quantile(0.99), places=9)
+
+    def test_planted_high_error_stratum_is_flagged(self):
+        # Deterministic counts: site_bad disagrees 10/30 (33%), site_ok 13/270
+        # (4.8%), pooled 7.7%. The bad stratum must clear its alarm limit; the
+        # clean majority must stay inside (a planted effect mild enough not to
+        # drag the pooled benchmark, which would legitimately flag site_ok low).
+        groups = pd.Series(["site_bad"] * 30 + ["site_ok"] * 270)
+        human = pd.Series(["pass"] * 300)
+        judge = pd.Series(["pass"] * 300)
+        judge.iloc[:10] = "fail"
+        judge.iloc[30:43] = "fail"
+        funnel = elv.subgroup_error_funnel(human, judge, groups)
+        by_name = {s["group"]: s for s in funnel["strata"]}
+        self.assertEqual(by_name["site_bad"]["flag"], "high")
+        self.assertIsNone(by_name["site_ok"]["flag"])
+        self.assertFalse(by_name["site_ok"]["outside_warn"])
+        self.assertEqual(funnel["n_flagged_high"], 1)
+
+    def test_tiny_stratum_at_pooled_rate_is_not_flagged(self):
+        # A 3-item stratum with one disagreement should sit inside its wide limits.
+        human = pd.Series(["a"] * 103)
+        judge = pd.Series(["a"] * 103)
+        judge.iloc[:10] = "b"  # pooled rate ~9.7%
+        groups = pd.Series(["big"] * 100 + ["tiny"] * 3)
+        judge.iloc[100] = "b"  # tiny: 1/3 disagree
+        funnel = elv.subgroup_error_funnel(human, judge, groups)
+        tiny = next(s for s in funnel["strata"] if s["group"] == "tiny")
+        self.assertIsNone(tiny["flag"])
+
+    def test_funnel_caveats_disclaim_causal_bias(self):
+        human = pd.Series(["a", "b"] * 10)
+        judge = pd.Series(["a", "b"] * 10)
+        groups = pd.Series(["g1", "g2"] * 10)
+        funnel = elv.subgroup_error_funnel(human, judge, groups)
+        self.assertIn("not proof of causal bias", funnel["caveats"][0])
+
+    def test_group_columns_flow_through_audit_and_report(self):
+        human_df, judge_df = _ratings()
+        judge_df["group_site"] = np.where(judge_df["item_id"] < 20, "north", "south")
+        audit = elv.BlindedAudit()
+        audit.seal_human(human_df)
+        audit.add_judge(judge_df)
+        results = audit.results()
+        self.assertIn("group_site", results["subgroup_error_funnel"])
+        self.assertEqual(results["subgroup_error_funnel"]["group_site"]["n_strata"], 2)
+        report = elv.audit_report(results)
+        self.assertIn("Subgroup error funnel", report)
+
+
 class RunBlindedAuditTests(unittest.TestCase):
     def test_end_to_end_writes_report_and_provenance(self):
         human_df, judge_df = _ratings()

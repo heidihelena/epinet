@@ -174,6 +174,152 @@ def judge_calibration(human: pd.Series, judge: pd.Series, confidence: pd.Series)
     }
 
 
+FUNNEL_CAVEATS = (
+    "The subgroup error funnel is an exploratory differential-error screen: it flags strata "
+    "where judge disagreement with the sealed human standard is unusually high or low after "
+    "accounting for subgroup size. It is not proof of causal bias and inherits the "
+    "limitations of the human standard.",
+    "Funnel limits are normal-approximation control limits with continuity correction around "
+    "the pooled rate; with many strata some excursions are expected by chance, which is why "
+    "only the outer (alarm) limit flags.",
+)
+
+
+def _normal_quantile(p: float) -> float:
+    """Inverse standard-normal CDF (Beasley–Springer–Moro approximation).
+
+    Keeps the funnel scipy-free; |error| < 3e-9 over (0, 1), far below the
+    resolution a screening funnel needs.
+    """
+    if not 0.0 < p < 1.0:
+        raise ValueError("quantile probability must be in (0, 1)")
+    a = (
+        -3.969683028665376e01,
+        2.209460984245205e02,
+        -2.759285104469687e02,
+        1.383577518672690e02,
+        -3.066479806614716e01,
+        2.506628277459239e00,
+    )
+    b = (
+        -5.447609879822406e01,
+        1.615858368580409e02,
+        -1.556989798598866e02,
+        6.680131188771972e01,
+        -1.328068155288572e01,
+    )
+    c = (
+        -7.784894002430293e-03,
+        -3.223964580411365e-01,
+        -2.400758277161838e00,
+        -2.549732539343734e00,
+        4.374664141464968e00,
+        2.938163982698783e00,
+    )
+    d = (7.784695709041462e-03, 3.224671290700398e-01, 2.445134137142996e00, 3.754408661907416e00)
+    p_low, p_high = 0.02425, 1 - 0.02425
+    if p < p_low:
+        q = np.sqrt(-2 * np.log(p))
+        return (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / (
+            (((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1
+        )
+    if p > p_high:
+        return -_normal_quantile(1 - p)
+    q = p - 0.5
+    r = q * q
+    return (
+        (((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5])
+        * q
+        / (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1)
+    )
+
+
+def subgroup_error_funnel(
+    human: pd.Series,
+    judge: pd.Series,
+    groups: pd.Series,
+    *,
+    warn_level: float = 0.95,
+    alarm_level: float = 0.998,
+) -> dict[str, object]:
+    """Exploratory differential-error screen over subgroups (funnel plot logic).
+
+    For each stratum of ``groups``, compares the judge-vs-human disagreement
+    rate against funnel control limits around the pooled rate at the stratum's
+    size — the quality-indicator funnel, pointed at the judge. Strata outside
+    the outer (``alarm_level``) limits are flagged ``"high"``/``"low"``; the
+    inner (``warn_level``) excursions are reported but not flagged, because
+    with many strata some inner excursions are expected by chance.
+
+    This is a screen, not an inference: a flag says "this stratum's error rate
+    is unusual given its size", not that the judge is causally biased, and the
+    whole reading inherits the limitations of the human standard.
+    """
+    if not 0.5 < warn_level < alarm_level < 1.0:
+        raise ValueError("need 0.5 < warn_level < alarm_level < 1")
+    frame = pd.DataFrame(
+        {
+            "human": pd.Series(human).astype("string"),
+            "judge": pd.Series(judge).astype("string"),
+            "group": pd.Series(groups).astype("string"),
+        }
+    )
+    keep = ~(
+        epinet_common.blank_label_mask(frame["human"])
+        | epinet_common.blank_label_mask(frame["judge"])
+        | epinet_common.blank_label_mask(frame["group"])
+    )
+    frame = frame[keep]
+    if frame.empty:
+        raise ValueError("funnel needs at least one item with both ratings and a group")
+    frame["disagree"] = frame["human"] != frame["judge"]
+    pooled = float(frame["disagree"].mean())
+    z_warn = _normal_quantile(0.5 + warn_level / 2.0)
+    z_alarm = _normal_quantile(0.5 + alarm_level / 2.0)
+
+    strata = []
+    for name, sub in frame.groupby("group", sort=True):
+        n = int(len(sub))
+        k = int(sub["disagree"].sum())
+        rate = k / n
+        se = float(np.sqrt(pooled * (1.0 - pooled) / n))
+        cc = 0.5 / n  # continuity correction
+        limits = {
+            "warn_low": max(0.0, pooled - z_warn * se - cc),
+            "warn_high": min(1.0, pooled + z_warn * se + cc),
+            "alarm_low": max(0.0, pooled - z_alarm * se - cc),
+            "alarm_high": min(1.0, pooled + z_alarm * se + cc),
+        }
+        flag = None
+        if rate > limits["alarm_high"]:
+            flag = "high"
+        elif rate < limits["alarm_low"]:
+            flag = "low"
+        strata.append(
+            {
+                "group": str(name),
+                "n": n,
+                "n_disagree": k,
+                "disagreement_rate": rate,
+                **{key: float(v) for key, v in limits.items()},
+                "outside_warn": bool(rate > limits["warn_high"] or rate < limits["warn_low"]),
+                "flag": flag,
+            }
+        )
+
+    return {
+        "pooled_disagreement_rate": pooled,
+        "n_items": int(len(frame)),
+        "n_strata": len(strata),
+        "warn_level": warn_level,
+        "alarm_level": alarm_level,
+        "strata": strata,
+        "n_flagged_high": sum(1 for s in strata if s["flag"] == "high"),
+        "n_flagged_low": sum(1 for s in strata if s["flag"] == "low"),
+        "caveats": list(FUNNEL_CAVEATS),
+    }
+
+
 class BlindedAudit:
     """Order-enforcing container: human ratings seal before judge ratings enter.
 
@@ -255,6 +401,13 @@ class BlindedAudit:
             out["criterion_leverage"] = contest["summary"]["feature_leverage"]
             out["n_grey_zone_disagreements"] = int(len(grey))
             out["_assignments"] = assignments.reset_index()
+
+        group_cols = [c for c in self._judge.columns if c.startswith("group_")]
+        if group_cols:
+            out["subgroup_error_funnel"] = {
+                col: subgroup_error_funnel(human, judge, self._judge[col].reindex(human.index))
+                for col in group_cols
+            }
         return out
 
 
@@ -304,6 +457,24 @@ def audit_report(results: dict[str, object]) -> str:
         lines += [
             f"- `{name}`: {share:.3f}" for name, share in list(summary["feature_leverage"].items())[:10]
         ]
+    funnels = results.get("subgroup_error_funnel")
+    if funnels:
+        lines += ["", "## Subgroup error funnel (exploratory differential-error screen)", ""]
+        for col, funnel in funnels.items():
+            lines.append(
+                f"- `{col}`: pooled disagreement **{funnel['pooled_disagreement_rate']:.3f}** "
+                f"across {funnel['n_strata']} strata; flagged high/low at the "
+                f"{funnel['alarm_level']:.1%} limit: **{funnel['n_flagged_high']}** / "
+                f"**{funnel['n_flagged_low']}**"
+            )
+            for s in funnel["strata"]:
+                if s["flag"]:
+                    lines.append(
+                        f"  - `{s['group']}` flagged **{s['flag']}**: "
+                        f"{s['n_disagree']}/{s['n']} = {s['disagreement_rate']:.3f} "
+                        f"(alarm limits {s['alarm_low']:.3f}–{s['alarm_high']:.3f})"
+                    )
+        lines += ["", *(f"- {c}" for c in FUNNEL_CAVEATS)]
     lines += ["", "## Caveats", ""]
     lines += [f"- {c}" for c in results["caveats"]]
     return "\n".join(lines) + "\n"
@@ -326,9 +497,10 @@ def run_blinded_audit(
     """End-to-end blinded audit from two CSVs, with provenance and a report.
 
     ``human_csv``: ``item_id, human_label``. ``judge_csv``: ``item_id,
-    judge_label`` plus optional ``judge_confidence`` (in [0, 1]) and any number
-    of numeric ``criterion_*`` rubric columns. Writes ``judge_audit.json``,
-    ``judge_audit.md``, and per-verdict ``verdict_assignments.csv``.
+    judge_label`` plus optional ``judge_confidence`` (in [0, 1]), any number of
+    numeric ``criterion_*`` rubric columns, and any number of categorical
+    ``group_*`` columns (each gets a subgroup error funnel). Writes
+    ``judge_audit.json``, ``judge_audit.md``, and ``verdict_assignments.csv``.
     """
     out_path = Path(out_dir)
     out_path.mkdir(parents=True, exist_ok=True)
