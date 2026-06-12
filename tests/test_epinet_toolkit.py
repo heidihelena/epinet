@@ -356,6 +356,36 @@ class ToolkitTests(unittest.TestCase):
         self.assertTrue(test_groups)
         self.assertEqual(train_groups & test_groups, set())
 
+    def test_outcome_confounded_community_split_is_refused(self):
+        # Outcome identical to community: any group split leaves the training
+        # fold without one class entirely. The guard must refuse with an
+        # explanation rather than score a model against an unseen class.
+        labels = et.community_labels(self._two_cluster_graph())
+        X = pd.DataFrame({"x": range(len(labels))}, index=labels.index)
+        y = labels.astype(str)  # class == community, i.e. fully confounded
+        with self.assertRaisesRegex(ValueError, "outcome-confounded"):
+            et._split_indices(
+                X, y, test_size=0.5, random_state=0, stratify_ok=False, groups=labels
+            )
+
+    def test_random_split_missing_class_is_refused(self):
+        # Unstratified random split where one class is so rare it can land
+        # entirely in the test fold; the guard refuses that too.
+        X = pd.DataFrame({"x": range(8)})
+        y = pd.Series(["a"] * 7 + ["b"])
+        refused = False
+        for seed in range(50):
+            try:
+                train_idx, _ = et._split_indices(
+                    X, y, test_size=0.5, random_state=seed, stratify_ok=False
+                )
+            except ValueError as err:
+                self.assertIn("missing outcome class", str(err))
+                refused = True
+            else:
+                self.assertEqual(set(y.iloc[train_idx].unique()), {"a", "b"})
+        self.assertTrue(refused, "expected at least one seed to drop the rare class")
+
     def test_community_split_strategy_is_recorded(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
