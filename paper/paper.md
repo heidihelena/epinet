@@ -30,7 +30,8 @@ calibrated, and how well it transports to new data.
 
 Its distinguishing feature is that conservative evaluation is the default rather
 than an opt-in. Every outcome-model run reports discrimination (AUROC, average
-precision), calibration (Brier score, calibration slope and intercept), a
+precision), calibration (Brier score always; calibration slope and intercept for
+binary outcomes), a
 label-permutation null, community-aware splitting, bootstrap intervals,
 small-cohort warnings, a reproducibility provenance record, and a TRIPOD+AI-style
 model card [@tripodai; @vancalster2019]. EpiNet is a research and education
@@ -86,8 +87,8 @@ nearest-centroid contestability layer was chosen because its sufficient
 statistics are additive: the empirical scaler, the class centroids, and the
 shared-covariance Mahalanobis precision can be reconstructed *exactly* from
 per-site counts, sums, sums of squares, and second-moment matrices, so the
-contestability analytic is exactly federatable while record-level data stay
-local. Covariance shrinkage (Ledoit–Wolf [@ledoit2004]) is available in
+*unshrunk-empirical* contestability analytic is exactly federatable while
+record-level data stay local. Covariance shrinkage (Ledoit–Wolf [@ledoit2004]) is available in
 centralized use; exact federated reproduction of that shrinkage would require
 additional (fourth-moment) aggregates and is documented as a current limitation,
 not a feature.
