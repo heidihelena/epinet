@@ -62,6 +62,11 @@ Ki67, …). The same lens runs on any cohort. More figures in
 - **Baselines & external validation** — compare graph features against a
   node-embedding baseline and a no-information floor under the same harness, and
   validate a model on an independent cohort. See [docs/validation.md](docs/validation.md).
+- **LLMvahti** (*experimental*) — the same contestability lens pointed at
+  LLM-as-judge verdicts: a blinded-second-rater audit where the human rates
+  first, with inter-rater agreement, judge-confidence calibration, and
+  per-verdict flip-distance over rubric criteria. See
+  [docs/llmvahti.md](docs/llmvahti.md).
 
 ## Install
 
