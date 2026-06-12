@@ -47,6 +47,7 @@ py-modules = [
     "epinet_governance",
     "epinet_baselines",
     "epinet_validation",
+    "epinet_llmvahti",
 ]
 
 [tool.pytest.ini_options]

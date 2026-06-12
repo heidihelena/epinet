@@ -1,0 +1,347 @@
+"""LLMvahti (experimental): blinded-second-rater audit of LLM-judge verdicts.
+
+EpiNet's organising question — not just what a model predicts but how
+well-founded each call is — applied to LLM-as-judge evaluation. The human is
+the **primary rater**; the LLM judge is a **second rater**, and the audit is
+honest about both how often they agree and how fragile the judge's verdicts
+are:
+
+1. **Blinded protocol** — human ratings are sealed (content-hashed) *before*
+   the judge ratings enter the audit, and the audit refuses to run otherwise.
+   The seal makes the ordering tamper-evident within a run; keeping the human
+   genuinely unexposed to the judge's output is a process responsibility the
+   software cannot verify, and the report says so.
+2. **Inter-rater agreement** — raw agreement, Cohen's kappa, and a two-rater
+   nominal Krippendorff's alpha between human and judge, with the confusion
+   matrix and every disagreeing item listed rather than averaged away.
+3. **Judge calibration** — when the judge reports a confidence, it is scored
+   against *being right by the human standard*: Brier score plus the standard
+   weak-calibration slope/intercept (reusing the toolkit's Cox check).
+4. **Verdict contestability** — the nearest-centroid flip-distance lens
+   (``epinet_contest``) pointed at the judge's verdicts in rubric-criterion
+   space: how small a move in criterion scores would flip each verdict, which
+   criterion the verdict is most sensitive to, and which verdicts sit in the
+   contested grey zone. Grey-zone *and* human-disagreeing verdicts are the
+   audit's headline table: the calls most worth a human second look.
+
+Honest reading — surfaced in the output, not buried:
+
+- Agreement with the human rater is the audit's ground truth *by design*; it
+  measures alignment with the human standard, not correctness in any absolute
+  sense. Where the human standard is itself uncertain, so is the audit.
+- Contestability here measures the geometry of the judge's verdicts in rubric
+  space, not the quality of the underlying responses: a small flip-distance
+  says the verdict is fragile, not that the response is genuinely borderline.
+- This module is an experimental research demonstrator, not a benchmark, a
+  leaderboard, or a substitute for human review.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+
+import epinet_common
+import epinet_contest as ecn
+
+CAVEATS = (
+    "Agreement is measured against the human rater by design: it quantifies alignment "
+    "with the human standard, not absolute correctness.",
+    "The seal makes the human-before-judge ordering tamper-evident within this run; true "
+    "blinding (the human never seeing the judge's output) is a process responsibility "
+    "the software cannot verify.",
+    "Verdict flip-distance measures the geometry of the judge's verdicts in rubric-criterion "
+    "space; a small value means the verdict is fragile, not that the response is borderline.",
+) + ecn.CAVEATS
+
+
+def cohens_kappa(a: pd.Series, b: pd.Series) -> float | None:
+    """Cohen's kappa for two nominal raters; ``None`` when chance-undefined.
+
+    Kappa is undefined when expected agreement is 1 (both raters constant on the
+    same label); returning ``None`` rather than 0 keeps "undefined" distinct from
+    "exactly chance-level".
+    """
+    a, b = _aligned_pair(a, b)
+    if len(a) == 0:
+        return None
+    labels = sorted(set(a) | set(b))
+    observed = float(np.mean(a == b))
+    pa = pd.Series(a).value_counts(normalize=True)
+    pb = pd.Series(b).value_counts(normalize=True)
+    expected = float(sum(pa.get(lab, 0.0) * pb.get(lab, 0.0) for lab in labels))
+    if np.isclose(expected, 1.0):
+        return None
+    return (observed - expected) / (1.0 - expected)
+
+
+def krippendorff_alpha(a: pd.Series, b: pd.Series) -> float | None:
+    """Two-rater nominal Krippendorff's alpha; ``None`` when undefined.
+
+    Nominal metric over the pooled value distribution: alpha = 1 - Do/De, where
+    Do is observed disagreement across paired ratings and De the disagreement
+    expected from the pooled label frequencies. Undefined (``None``) when fewer
+    than two distinct values appear in the pool.
+    """
+    a, b = _aligned_pair(a, b)
+    n = len(a)
+    if n == 0:
+        return None
+    pooled = pd.Series(np.concatenate([a, b]))
+    freqs = pooled.value_counts()
+    total = float(len(pooled))
+    if len(freqs) < 2:
+        return None
+    do = float(np.mean(a != b))
+    de = 1.0 - float(((freqs / total) ** 2).sum())
+    # Small-sample correction for the expected disagreement (Krippendorff):
+    # use n_pooled/(n_pooled-1) * (1 - sum p^2) ... simplified pairwise form.
+    de = de * total / (total - 1.0)
+    if np.isclose(de, 0.0):
+        return None
+    return 1.0 - do / de
+
+
+def _aligned_pair(a: pd.Series, b: pd.Series) -> tuple[np.ndarray, np.ndarray]:
+    """Align two rating series on their shared index and drop blank labels."""
+    a = pd.Series(a).astype("string")
+    b = pd.Series(b).astype("string")
+    frame = pd.DataFrame({"a": a, "b": b})
+    keep = ~(epinet_common.blank_label_mask(frame["a"]) | epinet_common.blank_label_mask(frame["b"]))
+    frame = frame[keep]
+    return frame["a"].to_numpy(), frame["b"].to_numpy()
+
+
+def agreement(human: pd.Series, judge: pd.Series) -> dict[str, object]:
+    """Inter-rater agreement between the primary (human) and second (judge) rater."""
+    a, b = _aligned_pair(human, judge)
+    n = len(a)
+    if n == 0:
+        raise ValueError("Agreement needs at least one item rated by both raters")
+    labels = sorted(set(a) | set(b))
+    confusion = {ha: {ja: int(np.sum((a == ha) & (b == ja))) for ja in labels} for ha in labels}
+    return {
+        "n_items": n,
+        "labels": labels,
+        "raw_agreement": float(np.mean(a == b)),
+        "cohens_kappa": cohens_kappa(pd.Series(a), pd.Series(b)),
+        "krippendorff_alpha": krippendorff_alpha(pd.Series(a), pd.Series(b)),
+        "confusion_human_rows_judge_cols": confusion,
+    }
+
+
+def judge_calibration(human: pd.Series, judge: pd.Series, confidence: pd.Series) -> dict[str, object]:
+    """Score the judge's confidence against being right by the human standard.
+
+    ``correct`` is 1 when judge and human agree on an item. A well-calibrated
+    judge's confidence should track that probability: Brier score plus the Cox
+    weak-calibration slope/intercept (slope < 1 = overconfident). Reuses the
+    toolkit's logistic check so the reading matches the outcome-model report.
+    """
+    from epinet_toolkit import calibration_slope_intercept
+
+    frame = pd.DataFrame(
+        {
+            "human": pd.Series(human).astype("string"),
+            "judge": pd.Series(judge).astype("string"),
+            "conf": pd.to_numeric(pd.Series(confidence), errors="coerce"),
+        }
+    )
+    keep = ~(epinet_common.blank_label_mask(frame["human"]) | epinet_common.blank_label_mask(frame["judge"]))
+    frame = frame[keep]
+    if frame.empty:
+        raise ValueError("calibration needs at least one item rated by both raters")
+    a = frame["human"].to_numpy()
+    b = frame["judge"].to_numpy()
+    conf = frame["conf"].to_numpy(dtype=float)
+    if not np.isfinite(conf).all():
+        raise ValueError("judge confidence contains missing values; drop or impute deliberately")
+    if conf.min() < 0.0 or conf.max() > 1.0:
+        raise ValueError("judge confidence must be in [0, 1]")
+    correct = (a == b).astype(int)
+    brier = float(np.mean((conf - correct) ** 2))
+    cal = calibration_slope_intercept(pd.Series(correct), conf, 1)
+    return {
+        "n_items": int(len(correct)),
+        "judge_accuracy_vs_human": float(correct.mean()),
+        "mean_confidence": float(conf.mean()),
+        "brier_score": brier,
+        "calibration_slope": cal["slope"],
+        "calibration_intercept": cal["intercept"],
+    }
+
+
+class BlindedAudit:
+    """Order-enforcing container: human ratings seal before judge ratings enter.
+
+    ``seal_human`` content-hashes the human ratings; ``add_judge`` refuses to run
+    before the seal exists, and ``results`` refuses until both raters are in.
+    After ``results`` is computed the audit is closed and further mutation
+    raises — the same fail-closed posture as the governance gate.
+    """
+
+    def __init__(self) -> None:
+        self._human: pd.DataFrame | None = None
+        self._human_sha: str | None = None
+        self._judge: pd.DataFrame | None = None
+        self._closed = False
+
+    @staticmethod
+    def _check_frame(frame: pd.DataFrame, label_col: str) -> pd.DataFrame:
+        if "item_id" not in frame.columns or label_col not in frame.columns:
+            raise ValueError(f"ratings need 'item_id' and '{label_col}' columns")
+        if frame["item_id"].duplicated().any():
+            raise ValueError("duplicate item_id in ratings")
+        return frame.set_index("item_id")
+
+    def seal_human(self, frame: pd.DataFrame) -> str:
+        if self._closed or self._human is not None:
+            raise RuntimeError("human ratings are already sealed")
+        self._human = self._check_frame(frame, "human_label")
+        self._human_sha = epinet_common.sha256_frame(frame)
+        return self._human_sha
+
+    def add_judge(self, frame: pd.DataFrame) -> None:
+        if self._closed:
+            raise RuntimeError("audit is closed")
+        if self._human_sha is None:
+            raise RuntimeError(
+                "blinded protocol violation: seal the human ratings before judge ratings enter"
+            )
+        self._judge = self._check_frame(frame, "judge_label")
+
+    def results(
+        self,
+        *,
+        metric: str = "euclidean",
+        contest_quantile: float = 0.1,
+    ) -> dict[str, object]:
+        if self._human is None or self._judge is None:
+            raise RuntimeError("audit needs sealed human ratings and judge ratings")
+        self._closed = True
+
+        human = self._human["human_label"]
+        judge = self._judge["judge_label"].reindex(human.index)
+        out: dict[str, object] = {
+            "human_ratings_sha256": self._human_sha,
+            "agreement": agreement(human, judge),
+            "caveats": list(CAVEATS),
+        }
+
+        if "judge_confidence" in self._judge.columns:
+            out["judge_calibration"] = judge_calibration(
+                human, judge, self._judge["judge_confidence"].reindex(human.index)
+            )
+
+        criteria = self._judge.reindex(human.index).filter(regex="^criterion_")
+        criteria = criteria.select_dtypes(include=[np.number])
+        if criteria.shape[1] >= 1:
+            contest = ecn.contestability(
+                criteria,
+                y=self._judge["judge_label"].reindex(human.index),
+                metric=metric,
+                contest_quantile=contest_quantile,
+            )
+            assignments = contest["assignments"].set_index("ID")
+            disagrees = human.astype("string").reindex(assignments.index) != judge.astype("string").reindex(
+                assignments.index
+            )
+            assignments["human_disagrees"] = disagrees.to_numpy()
+            grey = assignments[assignments["contested"] & assignments["human_disagrees"]]
+            out["verdict_contestability"] = contest["summary"]
+            out["criterion_leverage"] = contest["summary"]["feature_leverage"]
+            out["n_grey_zone_disagreements"] = int(len(grey))
+            out["_assignments"] = assignments.reset_index()
+        return out
+
+
+def audit_report(results: dict[str, object]) -> str:
+    """Render the audit as Markdown, disagreements and grey zone first."""
+    agree = results["agreement"]
+    lines = [
+        "# LLMvahti judge audit (experimental)",
+        "",
+        "Human is the primary rater; the LLM judge is a blinded second rater. "
+        f"Human ratings sealed at SHA-256 `{results['human_ratings_sha256']}`.",
+        "",
+        "## Inter-rater agreement",
+        "",
+        f"- items rated by both: **{agree['n_items']}**",
+        f"- raw agreement: **{agree['raw_agreement']:.3f}**",
+        f"- Cohen's kappa: **{_fmt(agree['cohens_kappa'])}**",
+        f"- Krippendorff's alpha (nominal): **{_fmt(agree['krippendorff_alpha'])}**",
+    ]
+    cal = results.get("judge_calibration")
+    if cal:
+        lines += [
+            "",
+            "## Judge calibration (confidence vs. being right by the human standard)",
+            "",
+            f"- judge accuracy vs. human: **{cal['judge_accuracy_vs_human']:.3f}** "
+            f"at mean confidence **{cal['mean_confidence']:.3f}**",
+            f"- Brier score: **{cal['brier_score']:.3f}**",
+            f"- calibration slope / intercept: **{_fmt(cal['calibration_slope'])} / "
+            f"{_fmt(cal['calibration_intercept'])}** (slope < 1 = overconfident)",
+        ]
+    summary = results.get("verdict_contestability")
+    if summary:
+        flip = summary["flip_distance"]
+        lines += [
+            "",
+            "## Verdict contestability (judge verdicts in rubric-criterion space)",
+            "",
+            f"- verdicts scored: {summary['n_scored']}; contested (lowest "
+            f"{flip['contest_quantile']:.0%} flip-distance): **{flip['n_contested']}**",
+            f"- grey zone *and* human disagrees — the calls to re-review first: "
+            f"**{results['n_grey_zone_disagreements']}**",
+            "",
+            "Criterion leverage (which rubric criterion drives verdict flips):",
+            "",
+        ]
+        lines += [
+            f"- `{name}`: {share:.3f}" for name, share in list(summary["feature_leverage"].items())[:10]
+        ]
+    lines += ["", "## Caveats", ""]
+    lines += [f"- {c}" for c in results["caveats"]]
+    return "\n".join(lines) + "\n"
+
+
+def _fmt(value: object, digits: int = 3) -> str:
+    if value is None:
+        return "undefined"
+    return f"{float(value):.{digits}f}"
+
+
+def run_blinded_audit(
+    human_csv: str | Path,
+    judge_csv: str | Path,
+    out_dir: str | Path,
+    *,
+    metric: str = "euclidean",
+    contest_quantile: float = 0.1,
+) -> dict[str, object]:
+    """End-to-end blinded audit from two CSVs, with provenance and a report.
+
+    ``human_csv``: ``item_id, human_label``. ``judge_csv``: ``item_id,
+    judge_label`` plus optional ``judge_confidence`` (in [0, 1]) and any number
+    of numeric ``criterion_*`` rubric columns. Writes ``judge_audit.json``,
+    ``judge_audit.md``, and per-verdict ``verdict_assignments.csv``.
+    """
+    out_path = Path(out_dir)
+    out_path.mkdir(parents=True, exist_ok=True)
+
+    auditor = BlindedAudit()
+    auditor.seal_human(pd.read_csv(human_csv))
+    auditor.add_judge(pd.read_csv(judge_csv))
+    results = auditor.results(metric=metric, contest_quantile=contest_quantile)
+
+    assignments = results.pop("_assignments", None)
+    if assignments is not None:
+        assignments.to_csv(out_path / "verdict_assignments.csv", index=False)
+    results["provenance"] = epinet_common.provenance([human_csv, judge_csv])
+    (out_path / "judge_audit.json").write_text(json.dumps(results, indent=2, default=str))
+    (out_path / "judge_audit.md").write_text(audit_report(results))
+    return results
