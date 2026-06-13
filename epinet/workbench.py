@@ -40,10 +40,13 @@ from epinet.config import AnalysisConfig, validate_config
 # run actually produced.
 BUNDLE_FILES = (
     "analysis.yaml",
+    "index.html",
     "run_summary.json",
     "provenance.json",
     "model_metrics.json",
     "model_card.md",
+    "claims_check.json",
+    "split_comparison.json",
     "node_features.csv",
     "node_contestability.csv",
     "model_feature_importance.csv",
@@ -345,6 +348,48 @@ def _config_to_args(config: AnalysisConfig, nodes_path: str, edges_path: str, ru
     )
 
 
+def _split_comparison(config: AnalysisConfig, nodes_path: str, edges_path: str) -> dict:
+    """Evaluate the outcome model under random AND community-aware splits.
+
+    A bounded diagnostic (capped iterations, no bootstrap/permutation) whose only
+    purpose is the random-vs-community AUROC gap in the claims check. Recomputes
+    the cheap graph features rather than threading them out of ``et.run``.
+    """
+    from epinet import toolkit as et
+
+    nodes, edges = et.load_tables(nodes_path, edges_path)
+    graph = et.build_graph(
+        nodes, edges,
+        id_column=config.schema.id_column,
+        source_column=config.schema.source_column,
+        target_column=config.schema.target_column,
+    )
+    features = et.generate_graph_features(graph)
+    communities = et.community_labels(graph)
+    n_iter = min(5, config.analysis.evaluation.n_iterations)
+    keep = ("roc_auc", "balanced_accuracy", "average_precision")
+
+    def _evaluate(groups, tag):
+        target = Path(config.project.output_dir) / "_split_comparison" / tag
+        metrics = et.train_outcome_model(
+            nodes, features,
+            id_column=config.schema.id_column,
+            outcome_column=config.schema.outcome_column,
+            output_dir=target, test_size=config.analysis.split.test_size,
+            random_state=config.analysis.split.random_state,
+            n_iterations=n_iter, groups=groups, n_permutations=0, n_bootstrap=0,
+        )["metrics"]
+        return {k: metrics.get(k) for k in keep}
+
+    return {
+        "random": _evaluate(None, "random"),
+        "community": _evaluate(communities, "community"),
+        "n_iterations": n_iter,
+        "note": "Bounded diagnostic for leakage sensitivity; the community-aware "
+                "split is the more honest generalization estimate.",
+    }
+
+
 def run_config(config: AnalysisConfig, *, skip_gates: bool = False) -> dict:
     """Execute a plan end-to-end and write the result bundle. The config is the
     only source of truth — this reads nothing from any UI.
@@ -367,6 +412,12 @@ def run_config(config: AnalysisConfig, *, skip_gates: bool = False) -> dict:
 
     run_model = config.analysis.task == "classification" and not gates.downgraded_to_descriptive
 
+    # Apply the report palette before the engine draws, so the figures match the
+    # HTML report chrome. Returns the resolved palette for the report theme.
+    from epinet import palette as epinet_palette
+
+    resolved_palette = epinet_palette.apply_palette(config.analysis.reporting.plot_palette)
+
     work_dir = output_dir / "inputs"
     nodes_path, edges_path = _prepare_inputs(config, work_dir)
 
@@ -376,12 +427,13 @@ def run_config(config: AnalysisConfig, *, skip_gates: bool = False) -> dict:
 
     # Baselines: same honest harness, graph vs no-information floor (and spectral
     # where the graph supports it). Only meaningful with a trained model.
+    baseline_metrics: dict | None = None
     if run_model and config.analysis.model.baselines:
         try:
             from epinet import baselines as eb
 
             nodes_df, edges_df = et.load_tables(nodes_path, edges_path)
-            eb.compare_representations(
+            baseline_result = eb.compare_representations(
                 nodes_df, edges_df,
                 id_column=config.schema.id_column,
                 outcome_column=config.schema.outcome_column,
@@ -389,11 +441,25 @@ def run_config(config: AnalysisConfig, *, skip_gates: bool = False) -> dict:
                 random_state=config.analysis.split.random_state,
                 output_dir=output_dir,
             )
+            baseline_metrics = baseline_result.get("metrics")
             summary["baselines"] = "baseline_comparison.csv"
         except Exception as exc:  # noqa: BLE001 - baselines are best-effort
             summary["baselines_error"] = str(exc)
 
+    # Random vs community-aware split comparison: a leakage-sensitivity diagnostic
+    # that feeds the claims check (does the headline survive an honest split?).
+    split_comparison: dict | None = None
+    if run_model and config.analysis.evaluation.split_comparison:
+        try:
+            split_comparison = _split_comparison(config, nodes_path, edges_path)
+            (output_dir / "split_comparison.json").write_text(
+                json.dumps(split_comparison, indent=2) + "\n"
+            )
+        except Exception as exc:  # noqa: BLE001 - diagnostic is best-effort
+            summary["split_comparison_error"] = str(exc)
+
     # External validation (publication mode).
+    external_validation: dict | None = None
     if config.analysis.evaluation.external_validation and config.data.validation_path and run_model:
         try:
             from epinet import validation as exv
@@ -404,7 +470,7 @@ def run_config(config: AnalysisConfig, *, skip_gates: bool = False) -> dict:
             )
             dev_nodes_df, dev_edges_df = et.load_tables(nodes_path, edges_path)
             ext_nodes_df, ext_edges_df = et.load_tables(val_nodes, val_edges)
-            exv.external_validation(
+            external_validation = exv.external_validation(
                 dev_nodes_df, dev_edges_df, ext_nodes_df, ext_edges_df,
                 id_column=config.schema.id_column,
                 outcome_column=config.schema.outcome_column,
@@ -414,6 +480,38 @@ def run_config(config: AnalysisConfig, *, skip_gates: bool = False) -> dict:
             summary["external_validation"] = "external_validation.json"
         except Exception as exc:  # noqa: BLE001
             summary["external_validation_error"] = str(exc)
+
+    # Scientific claims check: distil every diagnostic above into plain-language
+    # claim gates, append them to the model card, and write the machine-readable
+    # record. Generated for every run (descriptive runs get the caveat too).
+    from epinet import claims as epinet_claims
+
+    model_metrics = summary.get("model") if isinstance(summary.get("model"), dict) else None
+    claims = epinet_claims.scientific_claims_check(
+        model_metrics,
+        split_comparison=split_comparison,
+        baseline_metrics=baseline_metrics,
+        external_validation=external_validation,
+        model_trained=run_model and model_metrics is not None,
+    )
+    (output_dir / "claims_check.json").write_text(json.dumps(claims, indent=2) + "\n")
+    card_path = output_dir / "model_card.md"
+    if card_path.exists():
+        card_path.write_text(card_path.read_text().rstrip() + "\n\n"
+                             + epinet_claims.claims_markdown(claims) + "\n")
+
+    # Branded, portable HTML report — the polished bundle artifact.
+    if config.analysis.reporting.html_report:
+        try:
+            from epinet import htmlreport
+
+            htmlreport.build_html_report(
+                output_dir, config=config, claims=claims,
+                metrics=model_metrics, palette=resolved_palette,
+            )
+            summary["html_report"] = "index.html"
+        except Exception as exc:  # noqa: BLE001 - report is best-effort
+            summary["html_report_error"] = str(exc)
 
     _write_environment(output_dir)
     bundle = assemble_bundle(output_dir, config.project.name)

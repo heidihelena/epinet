@@ -166,6 +166,27 @@ def screen_plan(state: dict) -> None:
             disabled=config.data.validation_path is None,
         )
         a.contestability.enabled = st.checkbox("Contestability", a.contestability.enabled)
+        a.evaluation.split_comparison = st.checkbox(
+            "Random vs community split comparison", a.evaluation.split_comparison
+        )
+
+    with st.expander("Report & branding"):
+        r = a.reporting
+        r.html_report = st.checkbox("Branded HTML report (index.html)", r.html_report)
+        r.plot_palette = st.selectbox(
+            "Plot palette", ["wong", "vahtian"],
+            index=_idx(["wong", "vahtian"], r.plot_palette),
+            help="wong = colourblind-safe Okabe–Ito; vahtian = Sentinel brand palette",
+        )
+        r.brand_name = st.text_input("Brand name", r.brand_name)
+        r.report_title = st.text_input("Report title", r.report_title)
+        c1, c2 = st.columns(2)
+        with c1:
+            r.primary_color = st.color_picker("Primary colour", r.primary_color)
+        with c2:
+            r.accent_color = st.color_picker("Accent colour", r.accent_color)
+        st.caption("Theme changes colour/title only — caveats, claims check, and "
+                   "provenance are always rendered.")
 
     gates = wb.check_gates(config, state.get("profile"))
     for b in gates.blocks:
@@ -217,11 +238,33 @@ def screen_report(state: dict) -> None:
         st.info("Run the analysis first.")
         return
 
+    import json
+
     out = Path(config.project.output_dir)
+
+    # Scientific claims check — the plain-language headline and gates, first.
+    claims_path = out / "claims_check.json"
+    if claims_path.exists():
+        cc = json.loads(claims_path.read_text())
+        st.subheader("Scientific claims check")
+        st.info(cc.get("headline", ""))
+        for label, key in [("Permutation null", "permutation"),
+                           ("Split sensitivity", "split_comparison"),
+                           ("Baseline floor", "baselines"),
+                           ("External validation", "external_validation")]:
+            gate = cc.get(key, {})
+            st.markdown(f"- **{label} — {gate.get('status', '—')}**: {gate.get('statement', '')}")
+        st.warning(cc.get("clinical_caveat", ""))
+
+    # Branded HTML report download.
+    report_path = out / "index.html"
+    if report_path.exists():
+        st.download_button("Download HTML report (index.html)",
+                           report_path.read_bytes(), file_name="index.html",
+                           mime="text/html")
+
     metrics_path = out / "model_metrics.json"
     if metrics_path.exists():
-        import json
-
         metrics = json.loads(metrics_path.read_text())
         st.subheader("Metrics")
         st.json({k: metrics.get(k) for k in

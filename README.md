@@ -146,8 +146,39 @@ selected as a feature, missing validation cohort, identifier-looking columns). A
 too-small positive class downgrades model training to a descriptive report
 rather than fabricating metrics.
 
+**Scientific claims check.** Every run distils its diagnostics into
+plain-language claim gates — written into the model card, `claims_check.json`,
+and the HTML report:
+
+- **Permutation null** — *signal above null* vs *signal not detected*.
+- **Split sensitivity** — random vs community-aware split, to expose a headline
+  that leaned on leakage between connected cases.
+- **Baseline floor** — does the model beat the no-information baseline?
+- **External validation** — run or not, and how far performance transported.
+- A standing *"do not claim clinical utility unless…"* caveat, generated into
+  every report and not removable by theming.
+
+**Branded HTML report.** `epinet-workbench run` also writes a self-contained,
+offline `index.html` into the bundle (summary, caveats, claims check, model card,
+metrics, calibration, permutation null, baselines, contestability, plots,
+provenance, CSV downloads) — the portable artifact to share or print to PDF. A
+theme block in `analysis.yaml` sets the brand, title, logo, colours, and plot
+palette (slide between the colourblind-safe **Wong** and the Vahtian **Sentinel**
+palettes) — but the caveats, claims check, and provenance are always rendered:
+
+```yaml
+reporting:
+  brand_name: "Vahtian / EpiNet"
+  report_title: "EpiNet Analysis Report"
+  logo_path: null
+  primary_color: "#5E4F99"
+  accent_color: "#8273C0"
+  plot_palette: "wong"   # or "vahtian"
+```
+
 **Outputs** (the downloadable result bundle):
-`analysis.yaml`, `model_metrics.json`, `model_card.md`, `provenance.json`,
+`index.html`, `analysis.yaml`, `model_metrics.json`, `model_card.md`,
+`claims_check.json`, `split_comparison.json`, `provenance.json`,
 `node_features.csv`, `node_contestability.csv`, `model_feature_importance.csv`,
 `baseline_comparison.csv`, `external_validation.json` (publication mode),
 publication-quality `plots/`, and `environment.txt`.
