@@ -108,6 +108,52 @@ Key outputs in `epinet_outputs/`:
 
 The data format is documented in [Data-format.md](Data-format.md).
 
+## EpiNet Workbench
+
+EpiNet Workbench is a local CSV-to-report interface. It does **not** replace the
+command line and it is **not** AutoML: it never searches models or chases a
+metric. It writes an `analysis.yaml` file and runs the *same* EpiNet engine as
+the CLI, so every interactive run is reproducible without the interface.
+
+```bash
+# 1. Plan: profile the data, infer a schema, write a reviewable config
+epinet-workbench plan --nodes synthetic_nodes.csv --edges synthetic_edges.csv \
+  --outcome Outcome --output analysis.yaml
+
+# 2. Run: execute the plan and write a portable result bundle
+epinet-workbench run --config analysis.yaml
+
+# 3. UI (optional): the same plan/run behind a local Streamlit workbench
+pip install -e ".[ui]"
+epinet-workbench ui
+```
+
+The config — not hidden UI state — is the source of truth. The five-screen UI
+(Data → Schema → Plan → Run → Report) only ever builds an `analysis.yaml` and
+calls the same runner.
+
+**Supported modes**
+
+1. **Single CSV** — feature-space analysis for an ordinary table (no network
+   inference claimed unless you opt into a similarity graph).
+2. **Nodes + edges** — the full graph pipeline on real graph-shaped data.
+3. **Development + validation** — runs external validation by default; the mode
+   for publishable work.
+
+**Safety gates** block runs that would produce nonsense (no/single-class
+outcome, ID used as a feature) and warn on the rest (suspected outcome leakage
+selected as a feature, missing validation cohort, identifier-looking columns). A
+too-small positive class downgrades model training to a descriptive report
+rather than fabricating metrics.
+
+**Outputs** (the downloadable result bundle):
+`analysis.yaml`, `model_metrics.json`, `model_card.md`, `provenance.json`,
+`node_features.csv`, `node_contestability.csv`, `model_feature_importance.csv`,
+`baseline_comparison.csv`, `external_validation.json` (publication mode),
+publication-quality `plots/`, and `environment.txt`.
+
+**Scope:** research and education only. Not clinical decision support.
+
 ## Documentation
 
 - **[docs/methods.md](docs/methods.md)** — evaluation design (iterative
