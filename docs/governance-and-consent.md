@@ -1,6 +1,6 @@
 # Governance and consent for federated EpiNet
 
-This document accompanies `epinet_governance.py`. It states plainly **what the
+This document accompanies `epinet/governance.py`. It states plainly **what the
 code enforces** and **what remains a policy/legal responsibility the code cannot
 discharge**. The goal is a guard rail, not governance theatre — and not legal
 advice. Review everything below with your Data Protection Officer and counsel
@@ -75,6 +75,6 @@ own, separate consent — never bundled with the aggregate authorization.
 
 ---
 
-*This document and `epinet_governance.py` are guard rails for a research
+*This document and `epinet/governance.py` are guard rails for a research
 demonstrator. They do not constitute legal advice and do not by themselves
 establish compliance with the GDPR, the EU AI Act, the MDR, or national law.*

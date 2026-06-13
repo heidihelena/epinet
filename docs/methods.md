@@ -165,7 +165,7 @@ a failure of the run.
 
 ### 4. How far is the call from flipping? (`--run-contest`)
 
-`epinet_contest.py` makes the boundary analytic. For the nearest-centroid
+`epinet/contest.py` makes the boundary analytic. For the nearest-centroid
 classifier the decision boundary between two classes is a hyperplane, so the
 toolkit's `|s(x) − τ| / ‖∇s(x)‖` has a closed form — the **flip-distance**, the
 smallest move in standardized feature space that reverses the call:
