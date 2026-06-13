@@ -47,8 +47,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-import epinet_cluster as ec
-import epinet_common
+from epinet import cluster as ec
+from epinet import common as epinet_common
 
 CAVEATS = (
     "flip_distance is in standardized-feature units (SDs); it is decision-relevant "

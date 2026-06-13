@@ -36,10 +36,10 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-import epinet_cluster
-import epinet_common
-import epinet_contest
-import epinet_governance as governance
+from epinet import cluster as epinet_cluster
+from epinet import common as epinet_common
+from epinet import contest as epinet_contest
+from epinet import governance as governance
 
 VARIANCE_TOL = 1e-12  # matches epinet_cluster.standardize's zero-variance cutoff
 

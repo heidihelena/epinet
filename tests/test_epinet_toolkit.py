@@ -9,16 +9,16 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-import epinet_baselines as eb
-import epinet_cluster as ec
-import epinet_common as ecommon
-import epinet_contest as ecn
-import epinet_federated as efed
-import epinet_governance as eg
-import epinet_report
-import epinet_toolkit as et
-import epinet_validation as exv
-import epinet_viz as ev
+from epinet import baselines as eb
+from epinet import cluster as ec
+from epinet import common as ecommon
+from epinet import contest as ecn
+from epinet import federated as efed
+from epinet import governance as eg
+from epinet import report as epinet_report
+from epinet import toolkit as et
+from epinet import validation as exv
+from epinet import viz as ev
 
 
 class CommonHelperTests(unittest.TestCase):
@@ -1496,7 +1496,7 @@ class RegistryAdapterTests(unittest.TestCase):
         })
 
     def test_adapts_flat_table_to_canonical_schema(self):
-        import epinet_registry as ereg
+        from epinet import registry as ereg
 
         profile = ereg.RegistryProfile(id_column="case_id", outcome_column="status")
         result = ereg.adapt(self._table(), profile)
@@ -1510,19 +1510,19 @@ class RegistryAdapterTests(unittest.TestCase):
         self.assertEqual(len(manifest["source_sha256"]), 64)
 
     def test_missing_id_column_raises(self):
-        import epinet_registry as ereg
+        from epinet import registry as ereg
 
         with self.assertRaises(ValueError):
             ereg.adapt(self._table(), ereg.RegistryProfile(id_column="nope"))
 
     def test_edge_strategy_none_yields_no_edges(self):
-        import epinet_registry as ereg
+        from epinet import registry as ereg
 
         result = ereg.adapt(self._table(), ereg.RegistryProfile(id_column="case_id", edge_strategy="none"))
         self.assertEqual(len(result["edges"]), 0)
 
     def test_shared_attribute_edges_link_matching_cases(self):
-        import epinet_registry as ereg
+        from epinet import registry as ereg
 
         profile = ereg.RegistryProfile(
             id_column="case_id", edge_strategy="shared", shared_column="site",
@@ -1532,7 +1532,7 @@ class RegistryAdapterTests(unittest.TestCase):
         self.assertEqual(len(result["edges"]), 30)
 
     def test_output_runs_through_epinet(self):
-        import epinet_registry as ereg
+        from epinet import registry as ereg
 
         result = ereg.adapt(self._table(), ereg.RegistryProfile(id_column="case_id", outcome_column="status"))
         graph = et.build_graph(result["nodes"], result["edges"], weight_column="Weight")
@@ -1541,7 +1541,7 @@ class RegistryAdapterTests(unittest.TestCase):
         self.assertEqual(len(features), 12)
 
     def test_same_profile_makes_sites_column_compatible(self):
-        import epinet_registry as ereg
+        from epinet import registry as ereg
 
         table = self._table(n=12)
         profile = ereg.RegistryProfile(id_column="case_id", outcome_column="status")
@@ -1551,7 +1551,7 @@ class RegistryAdapterTests(unittest.TestCase):
         self.assertEqual(list(a.columns), list(b.columns))
 
     def test_profile_from_dict_rejects_unknown_keys(self):
-        import epinet_registry as ereg
+        from epinet import registry as ereg
 
         with self.assertRaises(ValueError):
             ereg.RegistryProfile.from_dict({"id_column": "x", "bogus": 1})
@@ -1561,7 +1561,7 @@ class IngestNormalizationTests(unittest.TestCase):
     """Front-end column-alias normalization (epinet_ingest)."""
 
     def test_aliases_are_resolved_to_canonical_schema(self):
-        import epinet_ingest as ein
+        from epinet import ingest as ein
 
         nodes = pd.DataFrame([{"patient_id": "p1", "label": 1}, {"patient_id": "p2", "label": 0}])
         edges = pd.DataFrame([{"from": "p1", "to": "p2"}])
@@ -1578,7 +1578,7 @@ class IngestNormalizationTests(unittest.TestCase):
         self.assertIn("patient_id", nodes.columns)
 
     def test_canonical_input_is_a_noop_but_still_hashed(self):
-        import epinet_ingest as ein
+        from epinet import ingest as ein
 
         nodes = pd.DataFrame([{"ID": "a", "Outcome": 1}])
         edges = pd.DataFrame([{"SourceID": "a", "TargetID": "a"}])
@@ -1619,7 +1619,7 @@ class IngestNormalizationTests(unittest.TestCase):
             self.assertEqual(roles, {"node_id", "outcome", "edge_source", "edge_target"})
 
     def test_no_normalize_flag_keeps_strict_validation(self):
-        import epinet_ingest as ein  # noqa: F401  (module exists; flag bypasses it)
+        from epinet import ingest as ein  # noqa: F401  (module exists; flag bypasses it)
 
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)

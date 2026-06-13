@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import build_lymphoma_workflow as blw
 
-import epinet_validation as ev
+from epinet import validation as ev
 
 
 def cohort(seed: int, *, marker_shift: float = 0.0):

@@ -23,7 +23,7 @@ is true.
 ## Run: Find Nearest Contrast Evidence By Hops
 
 ```bash
-python epinet_toolkit.py \
+python -m epinet.toolkit \
   --nodes examples/citematch_nodes.csv \
   --edges examples/citematch_edges.csv \
   --outcome-column Outcome \
@@ -40,7 +40,7 @@ judgment.
 ## Run: Find Nearest Support Evidence
 
 ```bash
-python epinet_toolkit.py \
+python -m epinet.toolkit \
   --nodes examples/citematch_nodes.csv \
   --edges examples/citematch_edges.csv \
   --outcome-column Outcome \
@@ -61,7 +61,7 @@ Shortest-path algorithms minimize cost. Use `Distance`, not raw `Weight`, when
 asking for a lowest-cost evidence route:
 
 ```bash
-python epinet_toolkit.py \
+python -m epinet.toolkit \
   --nodes examples/citematch_nodes.csv \
   --edges examples/citematch_edges.csv \
   --outcome-column Outcome \
@@ -82,7 +82,7 @@ If `Weight` is a normalized 0..1 strength score, use `--path-mode strength`.
 This maximizes the product of relationship strengths along the route:
 
 ```bash
-python epinet_toolkit.py \
+python -m epinet.toolkit \
   --nodes examples/citematch_nodes.csv \
   --edges examples/citematch_edges.csv \
   --outcome-column Outcome \

@@ -29,33 +29,17 @@ ui = ["streamlit>=1.30"]       # the local EpiNet Workbench UI
 dev = ["pytest>=7.0", "ruff>=0.4", "hypothesis>=6.0"]
 
 [project.scripts]
-epinet = "epinet_toolkit:main"
-epinet-workbench = "epinet_workbench:main"
+epinet = "epinet.toolkit:main"
+epinet-workbench = "epinet.workbench:main"
 
 [project.urls]
 Homepage = "https://github.com/heidihelena/epinet"
 
 [tool.setuptools]
-# Flat module layout: the toolkit is a small set of top-level modules.
-py-modules = [
-    "epinet_toolkit",
-    "epinet_cluster",
-    "epinet_contest",
-    "epinet_viz",
-    "epinet_common",
-    "epinet_report",
-    "epinet_ingest",
-    "epinet_federated",
-    "epinet_registry",
-    "epinet_governance",
-    "epinet_baselines",
-    "epinet_validation",
-    "epinet_llmvahti",
-    "epinet_config",
-    "epinet_schema",
-    "epinet_workbench",
-    "epinet_ui",
-]
+# Package layout: all modules live under the `epinet` package, imported as
+# `from epinet import toolkit`, etc. (consolidated from the former flat
+# `epinet_*.py` modules).
+packages = ["epinet"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

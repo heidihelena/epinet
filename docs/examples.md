@@ -24,31 +24,31 @@ Each example has a builder script and a walkthrough (`examples/*_usecase.md`):
 Use outcome-positive nodes as targets:
 
 ```bash
-python epinet_toolkit.py --outcome-column Outcome --target-outcome 1
+python -m epinet.toolkit --outcome-column Outcome --target-outcome 1
 ```
 
 Use explicit target nodes:
 
 ```bash
-python epinet_toolkit.py --target-nodes Node_1,Node_5 --no-run-model
+python -m epinet.toolkit --target-nodes Node_1,Node_5 --no-run-model
 ```
 
 Limit the sources:
 
 ```bash
-python epinet_toolkit.py --source-nodes Node_0,Node_9 --target-nodes Node_42 --no-run-model
+python -m epinet.toolkit --source-nodes Node_0,Node_9 --target-nodes Node_42 --no-run-model
 ```
 
 Treat edges as directed:
 
 ```bash
-python epinet_toolkit.py --directed --target-nodes Node_42 --no-run-model
+python -m epinet.toolkit --directed --target-nodes Node_42 --no-run-model
 ```
 
 Use an edge weight column as path distance:
 
 ```bash
-python epinet_toolkit.py --weight-column Weight --path-mode distance --target-nodes Node_42 --no-run-model
+python -m epinet.toolkit --weight-column Weight --path-mode distance --target-nodes Node_42 --no-run-model
 ```
 
 Be careful: many datasets store edge weight as relationship strength, not distance.
@@ -58,7 +58,7 @@ directly as a shortest-path distance without transformation.
 If an edge column is a normalized 0..1 strength, you can ask for the strongest route:
 
 ```bash
-python epinet_toolkit.py --weight-column Weight --path-mode strength --target-nodes Node_42 --no-run-model
+python -m epinet.toolkit --weight-column Weight --path-mode strength --target-nodes Node_42 --no-run-model
 ```
 
 ## CiteMatch Evidence Graph Example
@@ -72,7 +72,7 @@ The `examples/` directory includes a small CiteMatch-style evidence graph:
 Run nearest contrast-evidence paths for three claims:
 
 ```bash
-python epinet_toolkit.py \
+python -m epinet.toolkit \
   --nodes examples/citematch_nodes.csv \
   --edges examples/citematch_edges.csv \
   --outcome-column Outcome \
@@ -98,7 +98,7 @@ centroids, and each node gets a distance to every outcome-class centroid — a
 transparent nearest-centroid (Rocchio) view.
 
 ```bash
-python epinet_toolkit.py --run-clusters --distance-metric mahalanobis --n-clusters 0
+python -m epinet.toolkit --run-clusters --distance-metric mahalanobis --n-clusters 0
 ```
 
 - `--n-clusters 0` uses the number of outcome classes when labels exist,

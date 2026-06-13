@@ -8,7 +8,7 @@ is no hidden UI state that changes the analysis.
 
 Launch with::
 
-    epinet-workbench ui          # or: streamlit run epinet_ui.py
+    epinet-workbench ui          # or: streamlit run epinet/ui.py
 
 Five screens: Data → Schema → Plan → Run → Report. Research and education only —
 not clinical decision support.
@@ -27,8 +27,8 @@ except ModuleNotFoundError:  # pragma: no cover - exercised only when extra miss
         "    pip install -e \".[ui]\"\nthen run: epinet-workbench ui"
     )
 
-import epinet_workbench as wb
-from epinet_config import AnalysisConfig
+from epinet import workbench as wb
+from epinet.config import AnalysisConfig
 
 SCREENS = ["1. Data", "2. Schema", "3. Plan", "4. Run", "5. Report"]
 

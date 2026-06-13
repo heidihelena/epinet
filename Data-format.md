@@ -86,7 +86,7 @@ Typical outputs:
 ## Minimum Example
 
 ```bash
-python epinet_toolkit.py \
+python -m epinet.toolkit \
   --nodes synthetic_nodes.csv \
   --edges synthetic_edges.csv \
   --outcome-column Outcome \
