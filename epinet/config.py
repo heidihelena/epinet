@@ -97,6 +97,9 @@ class Evaluation:
     permutation_repeats: int = 1000
     external_validation: bool = False
     n_iterations: int = 10
+    # Run the model under both random and community-aware splits and report the
+    # gap in the claims check (a leakage-sensitivity diagnostic).
+    split_comparison: bool = True
 
 
 @dataclass
@@ -112,6 +115,16 @@ class Reporting:
     provenance: bool = True
     plots: bool = True
     plot_format: str = "png"
+    # Branded HTML report written into the bundle (index.html). The theme below
+    # may recolour/retitle it, but the caveats, claims check, and provenance are
+    # always rendered and cannot be themed away.
+    html_report: bool = True
+    brand_name: str = "EpiNet"
+    report_title: str = "EpiNet Analysis Report"
+    logo_path: str | None = None
+    primary_color: str = "#5E4F99"
+    accent_color: str = "#8273C0"
+    plot_palette: str = "wong"
 
 
 @dataclass
