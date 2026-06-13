@@ -18,16 +18,19 @@ dependencies = [
     "pandas>=1.1.5",
     "scikit-learn>=0.24.1",
     "matplotlib>=3.3.2",
+    "pyyaml>=5.4",
 ]
 
 [project.optional-dependencies]
 # Example-only datasets and I/O, kept out of the core install.
 lidc = ["pylidc>=0.2.3"]       # LIDC-IDRI / LUNA16 cohort reconstruction
 excel = ["xlrd>=2.0", "openpyxl>=3.0"]  # reading the TCIA diagnosis spreadsheets
+ui = ["streamlit>=1.30"]       # the local EpiNet Workbench UI
 dev = ["pytest>=7.0", "ruff>=0.4", "hypothesis>=6.0"]
 
 [project.scripts]
 epinet = "epinet_toolkit:main"
+epinet-workbench = "epinet_workbench:main"
 
 [project.urls]
 Homepage = "https://github.com/heidihelena/epinet"
@@ -48,6 +51,10 @@ py-modules = [
     "epinet_baselines",
     "epinet_validation",
     "epinet_llmvahti",
+    "epinet_config",
+    "epinet_schema",
+    "epinet_workbench",
+    "epinet_ui",
 ]
 
 [tool.pytest.ini_options]
