@@ -2,7 +2,7 @@
 
 > **Status: experimental.** This module is a beta-quality research demonstrator
 > of EpiNet's honest-evaluation stance applied to LLM-as-judge pipelines. It is
-> not part of the v0.3.0 citation snapshot's core claims, not a benchmark, and
+> not part of the v0.4.0 citation snapshot's core claims, not a benchmark, and
 > not a substitute for human review. The market context that motivates it is in
 > [`llmvahti-gap-analysis.md`](llmvahti-gap-analysis.md).
 

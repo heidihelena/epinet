@@ -14,7 +14,7 @@ authors:
 affiliations:
   - name: Vahtian
     index: 1
-date: 12 June 2026
+date: 13 June 2026
 bibliography: paper.bib
 ---
 
@@ -75,10 +75,21 @@ are cited and depended upon rather than reimplemented.
 
 # Software design
 
-EpiNet uses a flat, single-file module layout and CSV inputs to keep the analysis
-inspectable, and favours conservative defaults over configurability: evaluation
+EpiNet uses a small single-package module layout (`epinet/`) and CSV inputs to
+keep the analysis inspectable, and favours conservative defaults over
+configurability: evaluation
 outputs include discrimination, calibration, a null-model comparison, bootstrap
 intervals, warnings, and provenance with no extra user opt-in.
+
+A graphical workbench provides the same analysis without the command line. It is
+a thin wrapper over a reproducible configuration file: each interactive session
+emits a complete `analysis.yaml`, and the run executes through the identical
+engine the command-line tool uses, so the interface is never the source of truth.
+Every run writes a provenance record, model card, diagnostic figures, and
+machine-readable result files, so any analysis produced through the interface can
+be reproduced without it. Safety gates block ill-posed runs — no or single-class
+outcome, or an identifier used as a feature — and downgrade under-powered cohorts
+to a descriptive report rather than fabricating metrics.
 
 Two design decisions follow from the federated goal. First, the outcome model (a
 random forest) sits deliberately *outside* the federated spine, because tree
@@ -109,7 +120,8 @@ The repository includes runnable demonstrations for synthetic and small
 biomedical-style cohorts — nodule risk, lymphoma subtyping, a registry adapter,
 federated contestability, and governance-mediated egress — together with
 representation baselines (including a learned node-embedding comparison) and an
-external-validation harness. The v0.3.0 release freezes these materials as a
+external-validation harness, and a local workbench that drives the same engine
+from a web interface. The v0.4.0 release freezes these materials as a
 citation snapshot with CI-tested examples (Python 3.10–3.12) and documented
 methodological limits. Its near-term significance is to give reviewers, students,
 and registry-methods researchers an executable reference workflow for identifying

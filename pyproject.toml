@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "epinet"
-version = "0.3.0"
+version = "0.4.0"
 description = "EpiNet (Epistemic Network): transparent network/feature-space analysis with honest evaluation (calibration, permutation nulls, model cards), nearest-centroid contestability, and federated governed aggregates."
 readme = "README.md"
 license = { file = "LICENSE" }
