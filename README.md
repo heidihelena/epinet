@@ -3,7 +3,7 @@
 [![Tests](https://github.com/heidihelena/epinet/actions/workflows/tests.yml/badge.svg)](https://github.com/heidihelena/epinet/actions/workflows/tests.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Python](https://img.shields.io/badge/python-3.10%E2%80%933.12-blue)
-<!-- After cutting a Zenodo release, add: [![DOI](https://zenodo.org/badge/DOI/<doi>.svg)](https://doi.org/<doi>) -->
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20681072.svg)](https://doi.org/10.5281/zenodo.20681072)
 
 EpiNet is a **transparent node/edge network and feature-space analysis toolkit**
 for graph-shaped datasets. The name reads *Epistemic Network*: the core question
