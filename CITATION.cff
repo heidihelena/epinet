@@ -26,5 +26,4 @@ keywords:
   - "model contestability"
   - "federated analysis"
   - "statistical disclosure control"
-# After linking the repo to Zenodo and cutting a release, add the minted DOI:
-# doi: "10.5281/zenodo.XXXXXXX"
+doi: "10.5281/zenodo.20681072"
