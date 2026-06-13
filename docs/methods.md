@@ -29,7 +29,7 @@ and split scheme, producing an empirical null distribution and a one-sided
 p-value per metric:
 
 ```bash
-python epinet_toolkit.py --permutation-test 100 --no-run-paths
+python -m epinet.toolkit --permutation-test 100 --no-run-paths
 ```
 
 ```json
@@ -54,7 +54,7 @@ that may sit in the test set. `--split-strategy community` detects communities
 (greedy modularity) and keeps each one entirely in train or test:
 
 ```bash
-python epinet_toolkit.py --split-strategy community --n-iterations 10
+python -m epinet.toolkit --split-strategy community --n-iterations 10
 ```
 
 Scores are typically lower and more variable than with random splits — that is
@@ -126,7 +126,7 @@ labeling noise.
 
 ```bash
 python examples/divergence_topography.py
-python epinet_toolkit.py \
+python -m epinet.toolkit \
   --nodes examples/lidc_divergence_nodes.csv --edges examples/lidc_edges.csv \
   --outcome-column Outcome --split-strategy community \
   --permutation-test 200 --no-run-paths \
@@ -145,7 +145,7 @@ The clustering lens already emits a per-case contestability signal: distance to
 disagrees with their own label.
 
 ```bash
-python epinet_toolkit.py --run-clusters --distance-metric mahalanobis \
+python -m epinet.toolkit --run-clusters --distance-metric mahalanobis \
   --cluster-labeled-only --output-dir epinet_outputs
 ```
 
@@ -180,7 +180,7 @@ metrics (in the latter, measured in the whitened space where the boundary is
 again a hyperplane).
 
 ```bash
-python epinet_toolkit.py \
+python -m epinet.toolkit \
   --nodes examples/nodule_nodes.csv --edges examples/nodule_edges.csv \
   --outcome-column Outcome --run-contest --distance-metric mahalanobis \
   --no-run-model --no-run-paths --no-run-clusters --no-make-plots \

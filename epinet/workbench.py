@@ -32,8 +32,8 @@ from pathlib import Path
 
 import pandas as pd
 
-import epinet_schema
-from epinet_config import AnalysisConfig, validate_config
+from epinet import schema as epinet_schema
+from epinet.config import AnalysisConfig, validate_config
 
 # Files that make up the portable result bundle. Missing ones are skipped (a
 # descriptive-only run has no model_metrics, etc.) so the bundle reflects what the
@@ -211,7 +211,7 @@ def _min_class_size(nodes_path: str | None, outcome_column: str) -> int | None:
         col = pd.read_csv(nodes_path, usecols=[outcome_column])[outcome_column]
     except Exception:  # noqa: BLE001
         return None
-    from epinet_common import labeled_mask
+    from epinet.common import labeled_mask
 
     labeled = col[labeled_mask(col).to_numpy()]
     if labeled.empty:
@@ -349,7 +349,7 @@ def run_config(config: AnalysisConfig, *, skip_gates: bool = False) -> dict:
     """Execute a plan end-to-end and write the result bundle. The config is the
     only source of truth — this reads nothing from any UI.
     """
-    import epinet_toolkit as et
+    from epinet import toolkit as et
 
     output_dir = Path(config.project.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -378,7 +378,7 @@ def run_config(config: AnalysisConfig, *, skip_gates: bool = False) -> dict:
     # where the graph supports it). Only meaningful with a trained model.
     if run_model and config.analysis.model.baselines:
         try:
-            import epinet_baselines as eb
+            from epinet import baselines as eb
 
             nodes_df, edges_df = et.load_tables(nodes_path, edges_path)
             eb.compare_representations(
@@ -396,7 +396,7 @@ def run_config(config: AnalysisConfig, *, skip_gates: bool = False) -> dict:
     # External validation (publication mode).
     if config.analysis.evaluation.external_validation and config.data.validation_path and run_model:
         try:
-            import epinet_validation as exv
+            from epinet import validation as exv
 
             val_nodes, val_edges = _prepare_one(
                 config, config.data.validation_path,
@@ -493,7 +493,7 @@ def _cmd_run(args) -> None:
 def _cmd_ui(args) -> None:
     import subprocess
 
-    app = Path(__file__).resolve().parent / "epinet_ui.py"
+    app = Path(__file__).resolve().parent / "ui.py"
     try:
         subprocess.run(["streamlit", "run", str(app)] + args.streamlit_args, check=True)
     except FileNotFoundError:

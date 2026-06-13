@@ -63,7 +63,7 @@ The cohort is written as an EpiNet network:
 ```bash
 python examples/build_nodule_cohort.py        # regenerate the CSVs
 
-python epinet_toolkit.py \
+python -m epinet.toolkit \
   --nodes examples/nodule_nodes.csv --edges examples/nodule_edges.csv \
   --outcome-column Outcome --include-centrality --no-run-paths \
   --split-strategy community --n-iterations 50 --permutation-test 200 \

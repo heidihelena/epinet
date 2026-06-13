@@ -29,7 +29,7 @@ import networkx as nx
 import numpy as np
 import pandas as pd
 
-import epinet_toolkit as et
+from epinet import toolkit as et
 
 COMPARISON_METRICS = ["roc_auc", "average_precision", "balanced_accuracy", "f1_weighted", "accuracy"]
 

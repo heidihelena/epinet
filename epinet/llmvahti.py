@@ -44,8 +44,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-import epinet_common
-import epinet_contest as ecn
+from epinet import common as epinet_common
+from epinet import contest as ecn
 
 CAVEATS = (
     "Agreement is measured against the human rater by design: it quantifies alignment "
@@ -141,7 +141,7 @@ def judge_calibration(human: pd.Series, judge: pd.Series, confidence: pd.Series)
     weak-calibration slope/intercept (slope < 1 = overconfident). Reuses the
     toolkit's logistic check so the reading matches the outcome-model report.
     """
-    from epinet_toolkit import calibration_slope_intercept
+    from epinet.toolkit import calibration_slope_intercept
 
     frame = pd.DataFrame(
         {

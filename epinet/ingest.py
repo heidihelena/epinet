@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-import epinet_common
+from epinet import common as epinet_common
 
 # Case-insensitive aliases per canonical role. Node roles are resolved only on
 # the node table and edge roles only on the edge table, so an edge "target"

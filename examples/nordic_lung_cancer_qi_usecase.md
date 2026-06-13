@@ -57,7 +57,7 @@ supports — only one node type carries the label of interest.
 ```bash
 python examples/build_nordic_lung_cancer_qi.py     # regenerate the CSVs
 
-python epinet_toolkit.py \
+python -m epinet.toolkit \
   --nodes examples/nordic_lung_cancer_qi_nodes.csv \
   --edges examples/nordic_lung_cancer_qi_edges.csv \
   --outcome-column Outcome --target-outcome broad --weight-column Weight \

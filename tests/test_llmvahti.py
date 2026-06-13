@@ -7,7 +7,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-import epinet_llmvahti as elv
+from epinet import llmvahti as elv
 
 
 def _ratings(n=40, flip_every=5, seed=7):

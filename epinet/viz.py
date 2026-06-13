@@ -31,7 +31,7 @@ import networkx as nx
 import numpy as np
 import pandas as pd
 
-import epinet_common
+from epinet import common as epinet_common
 
 # Colorblind-friendly cycle (Okabe-Ito) for categorical node outcomes.
 CATEGORY_COLORS = [

@@ -19,9 +19,9 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-import epinet_federated as efed
-import epinet_governance as eg
-import epinet_toolkit as et
+from epinet import federated as efed
+from epinet import governance as eg
+from epinet import toolkit as et
 
 
 def consent_for(site: str, controller: str) -> eg.Consent:
