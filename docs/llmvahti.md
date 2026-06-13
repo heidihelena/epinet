@@ -2,7 +2,7 @@
 
 > **Status: experimental.** This module is a beta-quality research demonstrator
 > of EpiNet's honest-evaluation stance applied to LLM-as-judge pipelines. It is
-> not part of the v0.3.0 citation snapshot's core claims, not a benchmark, and
+> not part of the v0.4.0 citation snapshot's core claims, not a benchmark, and
 > not a substitute for human review. The market context that motivates it is in
 > [`llmvahti-gap-analysis.md`](llmvahti-gap-analysis.md).
 
@@ -22,7 +22,7 @@ The evidence that this is needed — judge self-preference bias, overconfidence,
 and agreement that collapses to 64–68% exactly in expert domains — is collected,
 verified, and cited in the [gap analysis](llmvahti-gap-analysis.md).
 
-## What `epinet_llmvahti` does
+## What `epinet.llmvahti` does
 
 Given two CSVs:
 
@@ -32,7 +32,7 @@ Given two CSVs:
 | `judge.csv` | `item_id`, `judge_label` | `judge_confidence` ∈ [0, 1], any numeric `criterion_*` rubric scores, any categorical `group_*` strata |
 
 ```python
-import epinet_llmvahti as elv
+from epinet import llmvahti as elv
 
 results = elv.run_blinded_audit("human.csv", "judge.csv", "out/")
 ```
@@ -53,7 +53,7 @@ it produces `judge_audit.md`, `judge_audit.json`, and per-verdict
    against being right by the human standard: Brier score and the same Cox
    weak-calibration slope/intercept the outcome-model report uses
    (slope < 1 = overconfident judge).
-4. **Verdict contestability** — `epinet_contest`'s exact nearest-centroid
+4. **Verdict contestability** — `epinet.contest`'s exact nearest-centroid
    flip-distance, pointed at the judge's verdicts in `criterion_*` space:
    per-verdict flip-distance, the contested grey zone (lowest-decile by
    default), criterion-level value-of-information ("which rubric criterion
@@ -71,7 +71,7 @@ it produces `judge_audit.md`, `judge_audit.json`, and per-verdict
 
 ## Design notes and limits
 
-- **Reuse over reinvention.** The contestability layer is `epinet_contest`
+- **Reuse over reinvention.** The contestability layer is `epinet.contest`
   unchanged — the same closed-form Rocchio flip-distance, with the same
   additive sufficient statistics. That means the federated reconstruction
   documented in [`federated.md`](federated.md) applies to judge audits too:
