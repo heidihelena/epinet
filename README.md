@@ -5,6 +5,12 @@
 ![Python](https://img.shields.io/badge/python-3.10%E2%80%933.12-blue)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20681072.svg)](https://doi.org/10.5281/zenodo.20681072)
 
+EpiNet is Vahtian’s research-methods demonstrator for graph-shaped biomedical data.
+It produces calibrated, caveated, provenance-rich analysis reports. It is not clinical decision support.
+CiteVahti checks claim-evidence support in manuscripts.
+EpiNet checks whether graph-shaped analytical claims survive basic methodological stress tests.
+Both share the same brand principles: human review, provenance, caveats, and no unsupported claims.
+
 EpiNet is a **transparent node/edge network and feature-space analysis toolkit**
 for graph-shaped datasets. The name reads *Epistemic Network*: the core question
 is not just "what does the model predict" but how well-founded each call is — how
