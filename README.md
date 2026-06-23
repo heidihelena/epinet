@@ -159,7 +159,11 @@ and the HTML report:
 - **Permutation null** — *signal above null* vs *signal not detected*.
 - **Split sensitivity** — random vs community-aware split, to expose a headline
   that leaned on leakage between connected cases.
-- **Baseline floor** — does the model beat the no-information baseline?
+- **Baseline floor** — does the model beat the no-information baseline? The
+  margin is measured *paired per split* (model and floor share the same splits),
+  with a Nadeau–Bengio-corrected interval, so the verdict is three-way: *beats
+  floor*, *at floor*, or *not resolvable at this n* when the interval straddles
+  the line and the data cannot yet say.
 - **External validation** — run or not, and how far performance transported.
 - A standing *"do not claim clinical utility unless…"* caveat, generated into
   every report and not removable by theming.

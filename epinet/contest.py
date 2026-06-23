@@ -155,7 +155,15 @@ def contestability(
 
     Class centroids are built from the labeled nodes; every node in ``X``
     (scaffold included) is then scored, since "where would this unlabeled node
-    fall, and how contestably" is a meaningful question. ``contest_quantile``
+    fall, and how contestably" is a meaningful question.
+
+    Standardization population: the per-feature mean and SD that define the
+    "standardized-feature units" of every flip-distance are fit over ALL nodes in
+    ``X`` — scaffold (unlabeled) nodes included, not just the labeled nodes the
+    centroids come from. So an SD here is one SD of the whole node population; if
+    the scaffold differs in spread from the labeled set, the flip-distance unit
+    reflects that wider population, which is intended (it keeps every node on one
+    common scale) but worth stating. ``contest_quantile``
     flags the most fragile fraction of nodes (default: the lowest-decile
     flip-distance) — a dataset-relative cut, because an absolute, measurement-
     error-based threshold needs domain input the toolkit does not have.

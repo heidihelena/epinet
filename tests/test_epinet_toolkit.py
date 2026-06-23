@@ -1283,6 +1283,12 @@ class BaselineAndValidationTests(unittest.TestCase):
         # No-information is a chance-level floor; the embedding clears it.
         self.assertLessEqual(comp.loc["no_information", "roc_auc"], 0.7)
         self.assertGreater(comp.loc["spectral_embedding", "roc_auc"], 0.75)
+        # Paired baseline margin: graph_features vs floor on the SAME splits.
+        pb = result["paired_baseline"]
+        self.assertEqual(pb["model_representation"], "graph_features")
+        self.assertEqual(pb["n_pairs"], 3)
+        self.assertLessEqual(pb["margin_ci_lower"], pb["margin_ci_upper"])
+        self.assertIn("Nadeau", pb["correction"])
 
     def test_external_validation_reports_internal_external_drift(self):
         dev_nodes, dev_edges = self._two_community_graph()
