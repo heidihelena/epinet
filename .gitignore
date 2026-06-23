@@ -34,3 +34,6 @@ examples/lymphoma_edges.csv
 examples/lymphoma_outputs/
 
 .venv/
+
+# macOS Finder metadata
+.DS_Store
