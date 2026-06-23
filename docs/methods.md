@@ -41,6 +41,11 @@ python -m epinet.toolkit --permutation-test 100 --no-run-paths
 }
 ```
 
+Under a community-aware split a shuffled draw can leave an outcome class entirely
+in the held-out communities (no valid score); such draws are skipped rather than
+crashing the null, and the block also reports `n_permutations_used` /
+`n_permutations_skipped` so the p-value denominator reflects only valid draws.
+
 A p-value like 0.44 means shuffled labels score as well as the real ones almost
 half the time — the features carry no detectable signal. On the bundled random
 synthetic data this is the correct conclusion; on real data, demand a small

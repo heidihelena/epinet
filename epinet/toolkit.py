@@ -389,8 +389,10 @@ def calibration_slope_intercept(
     try:
         from sklearn.linear_model import LogisticRegression
 
-        # C=inf ≈ unpenalized fit (penalty=None is deprecated from sklearn 1.8).
-        lr = LogisticRegression(C=np.inf, solver="lbfgs", max_iter=1000)
+        # Unpenalized fit: the Cox calibration slope/intercept are a maximum-
+        # likelihood recalibration, so no shrinkage. penalty=None is the explicit
+        # way to say this (penalty="none" as a string is the deprecated spelling).
+        lr = LogisticRegression(penalty=None, solver="lbfgs", max_iter=1000)
         lr.fit(logit.reshape(-1, 1), y)
         return {"slope": float(lr.coef_[0][0]), "intercept": float(lr.intercept_[0])}
     except (ValueError, ImportError):
@@ -406,7 +408,8 @@ def _bootstrap_ci(
     n_boot: int,
     random_state: int,
     alpha: float = 0.05,
-) -> dict[str, dict[str, float]]:
+    groups: np.ndarray | None = None,
+) -> tuple[dict[str, dict[str, float]], str]:
     """Percentile bootstrap confidence intervals for the primary-split metrics.
 
     Repeated random re-splits expose *split-to-split* variability but their
@@ -416,6 +419,16 @@ def _bootstrap_ci(
     genuine within-split interval for a fixed model. Reported alongside, the two
     answer different questions: "how much does the score move if I re-split?" vs
     "how precisely is this split's score estimated?".
+
+    When ``groups`` (one community label per held-out row) is supplied and the
+    split spans at least two communities, the resampling is a **cluster
+    bootstrap**: whole communities are drawn with replacement instead of
+    individual nodes. Connected cases inside a community are correlated, so the
+    community is the honest resampling unit — an observation-level bootstrap there
+    treats correlated rows as independent and reports an over-narrow interval.
+    With fewer than two communities (or no groups) it falls back to the ordinary
+    observation-level bootstrap. The second return value names the unit used
+    (``"community"`` or ``"observation"``).
     """
     y_arr = np.asarray(y_true)
     pred_arr = np.asarray(predictions)
@@ -423,8 +436,23 @@ def _bootstrap_ci(
     rng = np.random.default_rng(random_state)
     keys = ["accuracy", "balanced_accuracy", "mcc", "f1_weighted", "roc_auc", "brier"]
     samples: dict[str, list[float]] = {k: [] for k in keys}
+
+    # Decide the resampling unit. A cluster bootstrap needs ≥2 communities in the
+    # held-out set to express between-community variability.
+    cluster_units: list[np.ndarray] | None = None
+    if groups is not None:
+        groups_arr = np.asarray(groups)
+        unique_groups = pd.unique(groups_arr)
+        if len(unique_groups) >= 2:
+            cluster_units = [np.flatnonzero(groups_arr == g) for g in unique_groups]
+    resample_unit = "community" if cluster_units is not None else "observation"
+
     for _ in range(n_boot):
-        idx = rng.integers(0, n, size=n)
+        if cluster_units is not None:
+            chosen = rng.integers(0, len(cluster_units), size=len(cluster_units))
+            idx = np.concatenate([cluster_units[c] for c in chosen])
+        else:
+            idx = rng.integers(0, n, size=n)
         yt = pd.Series(y_arr[idx])
         pr = pd.Series(pred_arr[idx])
         pb = proba[idx]
@@ -449,7 +477,7 @@ def _bootstrap_ci(
                 "lower": float(np.percentile(values, lo_q)),
                 "upper": float(np.percentile(values, hi_q)),
             }
-    return out
+    return out, resample_unit
 
 
 def train_outcome_model(
@@ -698,14 +726,20 @@ def train_outcome_model(
 
     # Within-split uncertainty: percentile bootstrap on the primary held-out set.
     if n_bootstrap > 0 and primary_proba is not None:
-        ci = _bootstrap_ci(
+        # In community mode, resample whole communities (cluster bootstrap) so the
+        # interval reflects the unit at which connected cases are correlated.
+        test_groups = (
+            groups.reindex(primary_truth.index).to_numpy() if groups is not None else None
+        )
+        ci, resample_unit = _bootstrap_ci(
             primary_truth, primary_predictions, primary_proba, classes,
-            n_boot=n_bootstrap, random_state=random_state,
+            n_boot=n_bootstrap, random_state=random_state, groups=test_groups,
         )
         if ci:
             metrics["primary_split_bootstrap_ci"] = {
                 "n_bootstrap": n_bootstrap,
                 "level": "95%",
+                "resample_unit": resample_unit,
                 "metrics": ci,
             }
 
@@ -758,15 +792,29 @@ def train_outcome_model(
     if n_permutations > 0:
         rng = np.random.default_rng(random_state)
         permutation_rows: list[dict[str, object]] = []
+        n_perm_skipped = 0
         for p in range(n_permutations):
             y_permuted = pd.Series(rng.permutation(y.to_numpy()), index=y.index, name=y.name)
             inner: list[dict[str, object]] = []
             for j in range(n_iterations):
-                _, row, _, _, _ = _split_and_score(
-                    X, y_permuted, tuned_model, test_size=test_size,
-                    random_state=random_state + j, stratify_ok=stratify_ok, groups=groups,
-                )
+                try:
+                    _, row, _, _, _ = _split_and_score(
+                        X, y_permuted, tuned_model, test_size=test_size,
+                        random_state=random_state + j, stratify_ok=stratify_ok, groups=groups,
+                    )
+                except ValueError:
+                    # A grouped (community) shuffle can leave an outcome class
+                    # entirely in the held-out communities, which _split_indices
+                    # refuses (training fold missing a class). That is the right
+                    # guardrail for the real split, but here the labels are
+                    # already destroyed — skip this draw rather than crash the
+                    # whole null distribution.
+                    continue
                 inner.append(row)
+            if not inner:
+                # Every iteration of this permutation degenerated; drop it.
+                n_perm_skipped += 1
+                continue
             inner_df = pd.DataFrame(inner)
             mean_row = {
                 m: float(inner_df[m].mean()) for m in present_metrics if m in inner_df.columns
@@ -791,10 +839,15 @@ def train_outcome_model(
                 "observed_mean": observed,
                 "null_mean": float(null_values.mean()),
                 "null_std": float(null_values.std(ddof=1)) if len(null_values) > 1 else 0.0,
-                "p_value": float((1 + extreme) / (n_permutations + 1)),
+                # Denominator is the number of *valid* null draws for this metric,
+                # not the requested count, so skipped degenerate permutations do
+                # not silently inflate significance.
+                "p_value": float((1 + extreme) / (len(null_values) + 1)),
             }
         metrics["permutation_test"] = {
             "n_permutations": n_permutations,
+            "n_permutations_used": len(permutation_metrics),
+            "n_permutations_skipped": n_perm_skipped,
             "metrics": perm_block,
             "multiplicity_note": (
                 f"{len(perm_block)} metrics tested simultaneously; p-values are NOT "

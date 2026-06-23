@@ -47,6 +47,39 @@ class ClaimsGateTests(unittest.TestCase):
             claims.baseline_gate({"no_information": {"roc_auc": 0.50}}, {"roc_auc": 0.505})["status"],
             "at floor")
 
+    def _paired(self, lo, hi, mean, thr=0.02):
+        return {"n_pairs": 8, "mean_margin": mean, "margin_ci_lower": lo,
+                "margin_ci_upper": hi, "threshold": thr, "correction": "NB",
+                "model_representation": "graph_features"}
+
+    def test_baseline_gate_paired_three_verdicts(self):
+        # CI clears the line -> beats; below -> at floor; straddles -> inconclusive.
+        self.assertEqual(claims.baseline_gate(None, {}, paired=self._paired(0.05, 0.12, 0.085))["status"],
+                         "beats floor")
+        self.assertEqual(claims.baseline_gate(None, {}, paired=self._paired(-0.03, 0.01, -0.01))["status"],
+                         "at floor")
+        straddle = claims.baseline_gate(None, {}, paired=self._paired(-0.01, 0.06, 0.025))
+        self.assertEqual(straddle["status"], "not resolvable")
+        self.assertFalse(straddle["resolvable_at_this_n"])
+
+    def test_paired_baseline_overrides_scalar(self):
+        # Even with a scalar floor that would read "beats", a straddling paired CI wins.
+        out = claims.baseline_gate({"no_information": {"roc_auc": 0.50}}, {"roc_auc": 0.80},
+                                   paired=self._paired(-0.01, 0.06, 0.025))
+        self.assertEqual(out["status"], "not resolvable")
+
+    def test_headline_inconclusive_on_not_resolvable(self):
+        metrics = {"roc_auc": 0.60, "permutation_test": {"n_permutations": 100, "metrics": {
+            "roc_auc": {"observed_mean": 0.60, "null_mean": 0.50, "p_value": 0.001}}}}
+        out = claims.scientific_claims_check(metrics, baseline_paired=self._paired(-0.01, 0.06, 0.025))
+        self.assertEqual(out["baselines"]["status"], "not resolvable")
+        self.assertIn("Inconclusive", out["headline"])
+
+    def test_html_status_not_resolvable_is_not_green(self):
+        # Regression guard: an inconclusive gate must NOT render as a pass (gate-ok).
+        self.assertEqual(htmlreport._status_class("not resolvable"), "gate-warn")
+        self.assertEqual(htmlreport._status_class("beats floor"), "gate-ok")
+
     def test_headline_downgrades_on_failed_gate(self):
         metrics = {"roc_auc": 0.52, "permutation_test": {"n_permutations": 100, "metrics": {
             "roc_auc": {"observed_mean": 0.52, "null_mean": 0.50, "p_value": 0.4}}}}

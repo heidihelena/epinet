@@ -379,12 +379,18 @@ def _split_comparison(config: AnalysisConfig, nodes_path: str, edges_path: str) 
             random_state=config.analysis.split.random_state,
             n_iterations=n_iter, groups=groups, n_permutations=0, n_bootstrap=0,
         )["metrics"]
-        return {k: metrics.get(k) for k in keep}
+        out = {k: metrics.get(k) for k in keep}
+        # Per-split AUROC spread across re-splits, so the claims check can tell a
+        # real random->community drop from one inside the iteration noise.
+        out["roc_auc_std"] = metrics.get("iteration_summary", {}).get("roc_auc", {}).get("std")
+        return out
 
     return {
         "random": _evaluate(None, "random"),
         "community": _evaluate(communities, "community"),
         "n_iterations": n_iter,
+        "roc_auc_std_note": "roc_auc_std is the std of AUROC across the bounded "
+                            "re-splits; it feeds the split-drop uncertainty band.",
         "note": "Bounded diagnostic for leakage sensitivity; the community-aware "
                 "split is the more honest generalization estimate.",
     }
@@ -428,6 +434,7 @@ def run_config(config: AnalysisConfig, *, skip_gates: bool = False) -> dict:
     # Baselines: same honest harness, graph vs no-information floor (and spectral
     # where the graph supports it). Only meaningful with a trained model.
     baseline_metrics: dict | None = None
+    baseline_paired: dict | None = None
     if run_model and config.analysis.model.baselines:
         try:
             from epinet import baselines as eb
@@ -442,6 +449,7 @@ def run_config(config: AnalysisConfig, *, skip_gates: bool = False) -> dict:
                 output_dir=output_dir,
             )
             baseline_metrics = baseline_result.get("metrics")
+            baseline_paired = baseline_result.get("paired_baseline")
             summary["baselines"] = "baseline_comparison.csv"
         except Exception as exc:  # noqa: BLE001 - baselines are best-effort
             summary["baselines_error"] = str(exc)
@@ -491,6 +499,7 @@ def run_config(config: AnalysisConfig, *, skip_gates: bool = False) -> dict:
         model_metrics,
         split_comparison=split_comparison,
         baseline_metrics=baseline_metrics,
+        baseline_paired=baseline_paired,
         external_validation=external_validation,
         model_trained=run_model and model_metrics is not None,
     )

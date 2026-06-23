@@ -148,7 +148,9 @@ footer{max-width:960px;margin:0 auto;padding:0 40px 48px;color:var(--vh-axis);fo
 
 def _status_class(status: str) -> str:
     s = (status or "").lower()
-    if any(k in s for k in ("not detected", "at floor", "leakage", "incomplete")):
+    # "not resolvable" is an inconclusive gate, NOT a pass — it must never render
+    # green, or the HTML report would over-claim exactly where the data is silent.
+    if any(k in s for k in ("not detected", "at floor", "leakage", "incomplete", "not resolvable")):
         return "gate-warn"
     if any(k in s for k in ("not run", "not compared")):
         return "gate-warn"

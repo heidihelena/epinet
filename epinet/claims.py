@@ -21,6 +21,8 @@ machine-readable record written as ``claims_check.json``.
 
 from __future__ import annotations
 
+import math
+
 # The standing caveat, generated into every report and never suppressible by the
 # theme. Phrased as preconditions, not reassurance.
 CLINICAL_CAVEAT = (
@@ -42,6 +44,35 @@ _BASELINE_MARGIN = 0.02    # AUROC margin over the no-information floor to count
 
 def _f(x, d=3):
     return "—" if x is None else (f"{x:.{d}f}" if isinstance(x, float) else str(x))
+
+
+def _roc_auc_spread(metrics: dict | None) -> tuple[float | None, int | None]:
+    """Per-re-split AUROC std and the re-split count, or (None, None) if absent.
+
+    The std lives in ``iteration_summary`` (only present for >1 re-split), the
+    count in ``n_iterations``. Together they give the standard error of a mean
+    AUROC, which is what lets a gate put an error bar on its own threshold.
+    """
+    if not metrics:
+        return None, None
+    std = metrics.get("iteration_summary", {}).get("roc_auc", {}).get("std")
+    n = metrics.get("n_iterations")
+    return std, n
+
+
+def _diff_se(std_a, n_a, std_b, n_b) -> float | None:
+    """Standard error of a difference of two mean AUROCs, or None if undefined.
+
+    Treats the two means as independent — a conservative simplification: when the
+    estimates are positively correlated (shared splits) this OVERstates the
+    spread, widening the band, so the gate errs toward "not resolvable" rather
+    than over-claiming. Underlying re-splits overlap (Nadeau & Bengio), so even
+    each per-estimate SE is itself a mild underestimate; read the band as a
+    rough resolvability check, not an exact CI.
+    """
+    if None in (std_a, n_a, std_b, n_b) or n_a < 2 or n_b < 2:
+        return None
+    return math.sqrt(std_a ** 2 / n_a + std_b ** 2 / n_b)
 
 
 def permutation_gate(metrics: dict) -> dict:
@@ -89,29 +120,98 @@ def split_gate(split_comparison: dict | None) -> dict:
         }
     rnd = split_comparison.get("random", {}).get("roc_auc")
     com = split_comparison.get("community", {}).get("roc_auc")
+    rnd_std = split_comparison.get("random", {}).get("roc_auc_std")
+    com_std = split_comparison.get("community", {}).get("roc_auc_std")
+    n_iter = split_comparison.get("n_iterations")
     drop = (rnd - com) if (rnd is not None and com is not None) else None
+
+    # Uncertainty of the drop: each per-split AUROC is a mean over n_iter
+    # re-splits, so the drop is a difference of two means. Enough to tell a real
+    # drop from iteration noise (see _diff_se for the caveats).
+    drop_se = _diff_se(rnd_std, n_iter, com_std, n_iter)
+    half = 2 * drop_se if drop_se is not None else None  # ~95% half-width
+    band = f" (±{_f(half)} at ~2 SE over {n_iter} re-splits)" if half is not None else ""
+    within_noise = half is not None and drop is not None and abs(drop) < half
+
     if drop is None:
         status, statement = "incomplete", "Split comparison did not produce both scores."
     elif drop >= _SPLIT_DROP_WARN:
         status = "leakage-sensitive"
+        hedge = (
+            " The band reaches below the flag threshold, so read this as suggestive "
+            "rather than firm." if half is not None and (drop - half) < _SPLIT_DROP_WARN else ""
+        )
         statement = (
-            f"Leakage-sensitive: AUROC falls {_f(drop)} from random ({_f(rnd)}) to "
+            f"Leakage-sensitive: AUROC falls {_f(drop)}{band} from random ({_f(rnd)}) to "
             f"community-aware splitting ({_f(com)}). Connected cases share structure; "
-            "the community-aware number is the more honest estimate of generalization."
+            f"the community-aware number is the more honest estimate of generalization.{hedge}"
+        )
+    elif within_noise:
+        status = "stable"
+        statement = (
+            f"Stable across splits: the {_f(drop)} AUROC change from random ({_f(rnd)}) "
+            f"to community-aware ({_f(com)}) is within iteration noise{band}, so it is "
+            "not distinguishable from zero — no evidence of leakage between connected cases."
         )
     else:
         status = "stable"
         statement = (
-            f"Stable across splits: AUROC changes only {_f(drop)} from random "
+            f"Stable across splits: AUROC changes only {_f(drop)}{band} from random "
             f"({_f(rnd)}) to community-aware ({_f(com)}), so the headline is not "
             "driven by leakage between connected cases."
         )
     return {"status": status, "statement": statement,
-            "random_roc_auc": rnd, "community_roc_auc": com, "drop": drop}
+            "random_roc_auc": rnd, "community_roc_auc": com,
+            "drop": drop, "drop_se": drop_se}
 
 
-def baseline_gate(baseline_metrics: dict | None, model_metrics: dict) -> dict:
-    """Does the model clear the no-information floor under the same harness?"""
+def _paired_baseline_gate(paired: dict) -> dict:
+    """Verdict from a paired model-vs-floor margin CI (the resolvable-at-n form)."""
+    mean = paired["mean_margin"]
+    lo, hi = paired["margin_ci_lower"], paired["margin_ci_upper"]
+    thr = paired.get("threshold", _BASELINE_MARGIN)
+    k = paired["n_pairs"]
+    ci = f"[{_f(lo)}, {_f(hi)}]"
+    base = (f"paired per-split margin {_f(mean)}, 95% CI {ci} over {k} shared "
+            f"splits ({paired.get('correction', 'resampled-t')})")
+    if lo >= thr:
+        status = "beats floor"
+        statement = (f"Beats the no-information floor: {base}, entirely above the "
+                     f"{_f(thr)} line.")
+        resolvable = True
+    elif hi < thr:
+        status = "at floor"
+        statement = (f"At the no-information floor: {base}, below the {_f(thr)} line. "
+                     "The representation adds no measurable signal — do not claim predictive value.")
+        resolvable = True
+    else:
+        status = "not resolvable"
+        statement = (f"Not resolvable at this n: {base}, straddles the {_f(thr)} line, so "
+                     "the data cannot say whether the model beats the floor. Do not claim "
+                     "predictive value on this evidence — gather more before deciding.")
+        resolvable = False
+    return {"status": status, "statement": statement, "margin": mean,
+            "margin_ci": [lo, hi], "n_pairs": k, "resolvable_at_this_n": resolvable,
+            "model_representation": paired.get("model_representation")}
+
+
+def baseline_gate(
+    baseline_metrics: dict | None,
+    model_metrics: dict,
+    *,
+    paired: dict | None = None,
+) -> dict:
+    """Does the model clear the no-information floor under the same harness?
+
+    When a ``paired`` model-vs-floor margin is supplied (per-split Δ on identical
+    splits, see ``baselines._paired_baseline_margin``), the verdict is read off
+    that paired CI: it clears the threshold, sits below it, or *straddles* it — in
+    which case the honest answer is "not resolvable at this n" rather than a bright
+    pass/fail. This is preferred over the scalar fallback because pairing cancels
+    split-difficulty variance and guarantees the two legs share the same splits.
+    """
+    if paired is not None and paired.get("n_pairs", 0) >= 2 and paired.get("mean_margin") is not None:
+        return _paired_baseline_gate(paired)
     if not baseline_metrics:
         return {"status": "not run",
                 "statement": "No baseline comparison was run.", "margin": None}
@@ -121,21 +221,42 @@ def baseline_gate(baseline_metrics: dict | None, model_metrics: dict) -> dict:
         return {"status": "incomplete",
                 "statement": "Baseline comparison is missing an AUROC.", "margin": None}
     margin = model - floor
+
+    # Error bar on the margin, so "beats floor" vs "at floor" reports whether the
+    # line is resolvable at this n, not just which side of 0.02 the point lands on.
+    model_std, n_model = _roc_auc_spread(model_metrics)
+    floor_std, n_floor = _roc_auc_spread(baseline_metrics.get("no_information"))
+    margin_se = _diff_se(model_std, n_model, floor_std, n_floor)
+    half = 2 * margin_se if margin_se is not None else None  # ~95% half-width
+    band = f" (±{_f(half)} at ~2 SE)" if half is not None else ""
+    within_noise = half is not None and margin < half
+
     if margin >= _BASELINE_MARGIN:
         status = "beats floor"
+        hedge = (
+            " The band reaches below the margin threshold, so treat this as "
+            "suggestive rather than firm." if half is not None and (margin - half) < _BASELINE_MARGIN else ""
+        )
         statement = (
             f"Beats the no-information floor: model AUROC {_f(model)} vs "
-            f"{_f(floor)} (margin {_f(margin)})."
+            f"{_f(floor)} (margin {_f(margin)}{band}).{hedge}"
+        )
+    elif within_noise:
+        status = "at floor"
+        statement = (
+            f"At the no-information floor: model AUROC {_f(model)} vs {_f(floor)} "
+            f"(margin {_f(margin)}{band}). The margin is within iteration noise — not "
+            "distinguishable from zero at this n — so do not claim predictive value."
         )
     else:
         status = "at floor"
         statement = (
             f"At the no-information floor: model AUROC {_f(model)} vs {_f(floor)} "
-            f"(margin {_f(margin)}). The representation adds no measurable signal "
+            f"(margin {_f(margin)}{band}). The representation adds no measurable signal "
             "over the floor — do not claim predictive value."
         )
     return {"status": status, "statement": statement, "margin": margin,
-            "model_roc_auc": model, "floor_roc_auc": floor}
+            "margin_se": margin_se, "model_roc_auc": model, "floor_roc_auc": floor}
 
 
 def external_validation_gate(extval: dict | None) -> dict:
@@ -164,6 +285,7 @@ def scientific_claims_check(
     *,
     split_comparison: dict | None = None,
     baseline_metrics: dict | None = None,
+    baseline_paired: dict | None = None,
     external_validation: dict | None = None,
     model_trained: bool = True,
 ) -> dict:
@@ -182,13 +304,17 @@ def scientific_claims_check(
 
     perm = permutation_gate(metrics)
     split = split_gate(split_comparison)
-    base = baseline_gate(baseline_metrics, metrics)
+    base = baseline_gate(baseline_metrics, metrics, paired=baseline_paired)
     extv = external_validation_gate(external_validation)
 
     # Headline: the most conservative reading. Any failed gate downgrades it.
     if perm["status"] == "signal not detected" or base["status"] == "at floor":
         headline = ("No usable signal: the model is at or below chance/no-information "
                     "on this dataset. Report this as a negative result, not a model.")
+    elif base["status"] == "not resolvable":
+        headline = ("Inconclusive vs the no-information floor: the model-minus-floor "
+                    "margin is not resolvable at this sample size. Neither claim it "
+                    "works nor that it fails — the data cannot tell yet.")
     elif split["status"] == "leakage-sensitive":
         headline = ("Signal present but leakage-sensitive: trust the community-aware "
                     "split number, and do not generalize beyond connected structure "
