@@ -390,9 +390,12 @@ def calibration_slope_intercept(
         from sklearn.linear_model import LogisticRegression
 
         # Unpenalized fit: the Cox calibration slope/intercept are a maximum-
-        # likelihood recalibration, so no shrinkage. penalty=None is the explicit
-        # way to say this (penalty="none" as a string is the deprecated spelling).
-        lr = LogisticRegression(penalty=None, solver="lbfgs", max_iter=1000)
+        # likelihood recalibration, so no shrinkage. C=inf drives the
+        # regularization strength (1/C) to zero, which is the unpenalized fit and
+        # the replacement scikit-learn recommends now that the ``penalty``
+        # argument is deprecated (removed in 1.10); it is numerically identical to
+        # the former ``penalty=None`` across the supported versions.
+        lr = LogisticRegression(C=np.inf, solver="lbfgs", max_iter=1000)
         lr.fit(logit.reshape(-1, 1), y)
         return {"slope": float(lr.coef_[0][0]), "intercept": float(lr.intercept_[0])}
     except (ValueError, ImportError):
