@@ -31,14 +31,24 @@ Given two CSVs:
 | `human.csv` | `item_id`, `human_label` | — |
 | `judge.csv` | `item_id`, `judge_label` | `judge_confidence` ∈ [0, 1], any numeric `criterion_*` rubric scores, any categorical `group_*` strata |
 
+from the command line:
+
+```bash
+epinet-llmvahti --human human.csv --judge judge.csv --output-dir out/
+# reproducible CIs: --n-boot 1000 --random-state 0 (defaults); --n-boot 0 to skip
+```
+
+or equivalently from Python:
+
 ```python
 from epinet import llmvahti as elv
 
 results = elv.run_blinded_audit("human.csv", "judge.csv", "out/")
 ```
 
-it produces `judge_audit.md`, `judge_audit.json`, and per-verdict
-`verdict_assignments.csv` containing:
+(`python -m epinet.llmvahti ...` works identically without installing the
+console script.) Either path produces `judge_audit.md`, `judge_audit.json`, and
+per-verdict `verdict_assignments.csv` containing:
 
 1. **Blinded protocol enforcement.** The human ratings are sealed
    (SHA-256-hashed) before judge ratings are accepted; the `BlindedAudit`

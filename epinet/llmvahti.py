@@ -40,6 +40,7 @@ Honest reading — surfaced in the output, not buried:
 
 from __future__ import annotations
 
+import argparse
 import json
 from pathlib import Path
 
@@ -634,3 +635,66 @@ def run_blinded_audit(
     (out_path / "judge_audit.json").write_text(json.dumps(results, indent=2, default=str))
     (out_path / "judge_audit.md").write_text(audit_report(results))
     return results
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description=(
+            "LLMvahti (experimental): blinded-second-rater audit of LLM-judge verdicts. "
+            "Human is the primary rater; the judge is a blinded second rater."
+        )
+    )
+    parser.add_argument("--human", required=True, help="Human ratings CSV: item_id, human_label")
+    parser.add_argument(
+        "--judge",
+        required=True,
+        help=(
+            "Judge ratings CSV: item_id, judge_label, plus optional judge_confidence in [0,1], "
+            "numeric criterion_* rubric columns, and categorical group_* strata"
+        ),
+    )
+    parser.add_argument("--output-dir", default="llmvahti_outputs", help="Directory for the audit bundle")
+    parser.add_argument(
+        "--metric",
+        default="euclidean",
+        choices=["euclidean", "mahalanobis"],
+        help="Distance metric for the verdict-contestability flip-distance",
+    )
+    parser.add_argument(
+        "--contest-quantile",
+        type=float,
+        default=0.1,
+        help="Lowest-flip-distance fraction of verdicts flagged as the contested grey zone",
+    )
+    parser.add_argument(
+        "--n-boot",
+        type=int,
+        default=1000,
+        help="Bootstrap resamples for the agreement-metric confidence intervals (0 to skip)",
+    )
+    parser.add_argument(
+        "--random-state",
+        type=int,
+        default=0,
+        help="Seed for the agreement-metric bootstrap, for reproducible intervals",
+    )
+    return parser
+
+
+def main(argv: list[str] | None = None) -> None:
+    args = build_parser().parse_args(argv)
+    results = run_blinded_audit(
+        args.human,
+        args.judge,
+        args.output_dir,
+        metric=args.metric,
+        contest_quantile=args.contest_quantile,
+        n_boot=args.n_boot,
+        random_state=args.random_state,
+    )
+    print(audit_report(results))
+    print(f"Wrote audit bundle to {Path(args.output_dir).resolve()}")
+
+
+if __name__ == "__main__":
+    main()

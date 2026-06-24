@@ -70,8 +70,9 @@ Ki67, …). The same lens runs on any cohort. More figures in
   validate a model on an independent cohort. See [docs/validation.md](docs/validation.md).
 - **LLMvahti** (*experimental*) — the same contestability lens pointed at
   LLM-as-judge verdicts: a blinded-second-rater audit where the human rates
-  first, with inter-rater agreement, judge-confidence calibration, and
-  per-verdict flip-distance over rubric criteria. See
+  first, with bootstrapped inter-rater agreement, judge-confidence calibration,
+  and per-verdict flip-distance over rubric criteria. Run it with the
+  `epinet-llmvahti` command (`--human`/`--judge` CSVs); see
   [docs/llmvahti.md](docs/llmvahti.md).
 
 ## Install

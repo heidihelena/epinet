@@ -238,6 +238,29 @@ class RunBlindedAuditTests(unittest.TestCase):
             self.assertIsNotNone(results["agreement"]["confidence_intervals"])
             self.assertIn("provenance", results)
 
+    def test_cli_writes_bundle(self):
+        human_df, judge_df = _ratings()
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            human_df.to_csv(tmp / "h.csv", index=False)
+            judge_df.to_csv(tmp / "j.csv", index=False)
+            out = tmp / "out"
+            elv.main(
+                [
+                    "--human", str(tmp / "h.csv"),
+                    "--judge", str(tmp / "j.csv"),
+                    "--output-dir", str(out),
+                    "--n-boot", "200",
+                    "--random-state", "1",
+                ]
+            )
+            self.assertTrue((out / "judge_audit.json").exists())
+            self.assertTrue((out / "judge_audit.md").exists())
+
+    def test_cli_requires_both_rating_files(self):
+        with self.assertRaises(SystemExit):
+            elv.main(["--human", "only.csv"])
+
     def test_no_criteria_still_audits_agreement(self):
         human_df, judge_df = _ratings()
         judge_only = judge_df[["item_id", "judge_label"]]
