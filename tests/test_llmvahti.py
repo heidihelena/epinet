@@ -148,6 +148,27 @@ class AuditResultTests(unittest.TestCase):
         self.assertEqual(cal["n_items"], len(self.human_df))
         self.assertTrue(0.0 <= cal["brier_score"] <= 1.0)
 
+    def test_calibration_ci_brackets_point_estimates(self):
+        cal = self.results["judge_calibration"]
+        ci = cal["confidence_intervals"]
+        self.assertIsNotNone(ci)
+        for key in ("brier_score", "judge_accuracy_vs_human"):
+            lo, hi = ci[key]
+            self.assertLessEqual(lo, cal[key])
+            self.assertGreaterEqual(hi, cal[key])
+        self.assertEqual(ci["n_boot"], 1000)
+        self.assertIn("n_undefined_calibration", ci)
+
+    def test_calibration_ci_reproducible_and_skippable(self):
+        human = self.human_df["human_label"]
+        judge = self.judge_df.set_index("item_id")["judge_label"].reindex(self.human_df["item_id"])
+        conf = self.judge_df.set_index("item_id")["judge_confidence"].reindex(self.human_df["item_id"])
+        a = elv.judge_calibration(human, judge, conf, random_state=9)["confidence_intervals"]
+        b = elv.judge_calibration(human, judge, conf, random_state=9)["confidence_intervals"]
+        self.assertEqual(a["brier_score"], b["brier_score"])
+        skipped = elv.judge_calibration(human, judge, conf, n_boot=0)["confidence_intervals"]
+        self.assertIsNone(skipped)
+
     def test_contestability_targets_judge_verdicts(self):
         summary = self.results["verdict_contestability"]
         self.assertEqual(summary["n_scored"], len(self.human_df))

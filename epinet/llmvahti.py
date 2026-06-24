@@ -18,7 +18,9 @@ are:
    confusion matrix and every disagreeing item listed rather than averaged away.
 3. **Judge calibration** — when the judge reports a confidence, it is scored
    against *being right by the human standard*: Brier score plus the standard
-   weak-calibration slope/intercept (reusing the toolkit's Cox check).
+   weak-calibration slope/intercept (reusing the toolkit's Cox check), each
+   with the same seeded percentile-bootstrap confidence interval as the
+   agreement block.
 4. **Verdict contestability** — the nearest-centroid flip-distance lens
    (``epinet_contest``) pointed at the judge's verdicts in rubric-criterion
    space: how small a move in criterion scores would flip each verdict, which
@@ -220,13 +222,79 @@ def agreement(
     }
 
 
-def judge_calibration(human: pd.Series, judge: pd.Series, confidence: pd.Series) -> dict[str, object]:
+def _bootstrap_calibration(
+    correct: np.ndarray,
+    conf: np.ndarray,
+    *,
+    n_boot: int,
+    random_state: int,
+    alpha: float = 0.05,
+) -> dict[str, object] | None:
+    """Percentile-bootstrap CIs for the judge-calibration metrics.
+
+    Resamples the paired (correct, confidence) items and recomputes the Brier
+    score, judge accuracy, and the Cox slope/intercept on each replicate. The
+    slope/intercept are jointly undefined on a degenerate resample (one class of
+    ``correct``, or constant confidence); those replicates are excluded and
+    counted. Returns ``None`` below ``_MIN_ITEMS_FOR_CI`` items or when
+    ``n_boot`` is non-positive — an honest "no interval" rather than a falsely
+    tight one, matching the agreement-metric bootstrap.
+    """
+    from epinet.toolkit import calibration_slope_intercept
+
+    n = len(correct)
+    if n < _MIN_ITEMS_FOR_CI or n_boot <= 0:
+        return None
+    rng = np.random.default_rng(random_state)
+    brier: list[float] = []
+    accuracy: list[float] = []
+    slope: list[float] = []
+    intercept: list[float] = []
+    for _ in range(n_boot):
+        idx = rng.integers(0, n, size=n)
+        c, p = correct[idx], conf[idx]
+        brier.append(float(np.mean((p - c) ** 2)))
+        accuracy.append(float(c.mean()))
+        cal = calibration_slope_intercept(pd.Series(c), p, 1)
+        if cal["slope"] is not None:
+            slope.append(cal["slope"])
+        if cal["intercept"] is not None:
+            intercept.append(cal["intercept"])
+    lo, hi = 100 * alpha / 2.0, 100 * (1.0 - alpha / 2.0)
+
+    def _ci(values: list[float]) -> list[float] | None:
+        return [float(np.percentile(values, lo)), float(np.percentile(values, hi))] if values else None
+
+    return {
+        "method": "percentile bootstrap over paired items",
+        "n_boot": int(n_boot),
+        "random_state": int(random_state),
+        "ci_level": round(1.0 - alpha, 4),
+        "brier_score": _ci(brier),
+        "judge_accuracy_vs_human": _ci(accuracy),
+        "calibration_slope": _ci(slope),
+        "calibration_intercept": _ci(intercept),
+        "n_undefined_calibration": int(n_boot - len(slope)),
+    }
+
+
+def judge_calibration(
+    human: pd.Series,
+    judge: pd.Series,
+    confidence: pd.Series,
+    *,
+    n_boot: int = 1000,
+    random_state: int = 0,
+) -> dict[str, object]:
     """Score the judge's confidence against being right by the human standard.
 
     ``correct`` is 1 when judge and human agree on an item. A well-calibrated
     judge's confidence should track that probability: Brier score plus the Cox
     weak-calibration slope/intercept (slope < 1 = overconfident). Reuses the
     toolkit's logistic check so the reading matches the outcome-model report.
+    Point estimates always; a seeded percentile-bootstrap ``confidence_intervals``
+    block when there are enough jointly-rated items (same small-sample rationale
+    as the agreement metrics — a Brier or slope on tens of items is noisy).
     """
     from epinet.toolkit import calibration_slope_intercept
 
@@ -258,6 +326,9 @@ def judge_calibration(human: pd.Series, judge: pd.Series, confidence: pd.Series)
         "brier_score": brier,
         "calibration_slope": cal["slope"],
         "calibration_intercept": cal["intercept"],
+        "confidence_intervals": _bootstrap_calibration(
+            correct, conf, n_boot=n_boot, random_state=random_state
+        ),
     }
 
 
@@ -468,7 +539,11 @@ class BlindedAudit:
 
         if "judge_confidence" in self._judge.columns:
             out["judge_calibration"] = judge_calibration(
-                human, judge, self._judge["judge_confidence"].reindex(human.index)
+                human,
+                judge,
+                self._judge["judge_confidence"].reindex(human.index),
+                n_boot=n_boot,
+                random_state=random_state,
             )
 
         criteria = self._judge.reindex(human.index).filter(regex="^criterion_")
@@ -533,12 +608,25 @@ def audit_report(results: dict[str, object]) -> str:
             "",
             "## Judge calibration (confidence vs. being right by the human standard)",
             "",
-            f"- judge accuracy vs. human: **{cal['judge_accuracy_vs_human']:.3f}** "
+            f"- judge accuracy vs. human: **{cal['judge_accuracy_vs_human']:.3f}**"
+            f"{_ci_suffix(cal, 'judge_accuracy_vs_human')} "
             f"at mean confidence **{cal['mean_confidence']:.3f}**",
-            f"- Brier score: **{cal['brier_score']:.3f}**",
+            f"- Brier score: **{cal['brier_score']:.3f}**{_ci_suffix(cal, 'brier_score')}",
             f"- calibration slope / intercept: **{_fmt(cal['calibration_slope'])} / "
-            f"{_fmt(cal['calibration_intercept'])}** (slope < 1 = overconfident)",
+            f"{_fmt(cal['calibration_intercept'])}** (slope < 1 = overconfident)"
+            f"{_ci_suffix(cal, 'calibration_slope')}",
         ]
+        cal_ci = cal.get("confidence_intervals")
+        if cal_ci is None:
+            lines.append(
+                f"- *(no bootstrap interval: fewer than {_MIN_ITEMS_FOR_CI} jointly-rated items)*"
+            )
+        else:
+            lines.append(
+                f"- intervals: {cal_ci['ci_level']:.0%} percentile bootstrap, "
+                f"{cal_ci['n_boot']} resamples (seed {cal_ci['random_state']}); "
+                f"slope CI shown after the slope/intercept pair"
+            )
     summary = results.get("verdict_contestability")
     if summary:
         flip = summary["flip_distance"]
