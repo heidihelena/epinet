@@ -68,7 +68,9 @@ per-verdict `verdict_assignments.csv` containing:
 3. **Judge calibration** — when `judge_confidence` is present, it is scored
    against being right by the human standard: Brier score and the same Cox
    weak-calibration slope/intercept the outcome-model report uses
-   (slope < 1 = overconfident judge).
+   (slope < 1 = overconfident judge), each with a seeded percentile-bootstrap
+   confidence interval (same `n_boot`/`random_state` and small-sample handling
+   as the agreement metrics).
 4. **Verdict contestability** — `epinet.contest`'s exact nearest-centroid
    flip-distance, pointed at the judge's verdicts in `criterion_*` space:
    per-verdict flip-distance, the contested grey zone (lowest-decile by
