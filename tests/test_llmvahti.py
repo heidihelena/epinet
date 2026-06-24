@@ -99,6 +99,56 @@ class AgreementBootstrapTests(unittest.TestCase):
         self.assertIsNone(elv.agreement(human, judge, n_boot=0)["confidence_intervals"])
 
 
+class HumanPanelTests(unittest.TestCase):
+    def test_multi_rater_alpha_reduces_to_two_rater(self):
+        a = pd.Series(["y"] * 5 + ["n"] * 5)
+        b = pd.Series(["y", "y", "y", "y", "n", "n", "n", "n", "n", "y"])
+        two = elv.krippendorff_alpha(a, b)
+        multi = elv._krippendorff_alpha_nominal([[x, y] for x, y in zip(a, b)])
+        self.assertAlmostEqual(two, multi)
+
+    def test_unanimous_panel_is_one(self):
+        self.assertAlmostEqual(
+            elv._krippendorff_alpha_nominal([["x", "x", "x"], ["y", "y", "y"]]), 1.0
+        )
+
+    def test_single_human_rater_has_no_panel(self):
+        df = pd.DataFrame({"human_label": ["x", "y", "x"]}, index=pd.Index([0, 1, 2], name="item_id"))
+        self.assertIsNone(elv.human_panel_agreement(df))
+
+    def test_panel_reports_splits_and_alpha(self):
+        n = 12
+        df = pd.DataFrame(
+            {
+                "human_label": (["x", "y"] * (n // 2)),
+                "human_label_b": (["x", "y"] * (n // 2)),
+                "human_label_c": (["x", "y"] * (n // 2)),
+            },
+            index=pd.Index(range(n), name="item_id"),
+        )
+        df.loc[2, "human_label_c"] = "y"  # one split item
+        panel = elv.human_panel_agreement(df)
+        self.assertEqual(panel["n_raters"], 3)
+        self.assertEqual(panel["n_split"], 1)
+        self.assertIn("2", panel["split_item_ids"])
+        self.assertLess(panel["krippendorff_alpha"], 1.0)
+
+    def test_panel_flows_through_audit_and_report(self):
+        human_df, judge_df = _ratings()
+        # Add a second and third human rater that mostly agree with human_label.
+        human_df["human_label_b"] = human_df["human_label"]
+        human_df["human_label_c"] = human_df["human_label"]
+        human_df.loc[3, "human_label_b"] = "fail"  # plant a panel split
+        audit = elv.BlindedAudit()
+        audit.seal_human(human_df)
+        audit.add_judge(judge_df)
+        results = audit.results()
+        self.assertIn("human_panel", results)
+        self.assertEqual(results["human_panel"]["n_raters"], 3)
+        report = elv.audit_report(results)
+        self.assertIn("Human panel", report)
+
+
 class BlindedProtocolTests(unittest.TestCase):
     def test_judge_before_seal_is_refused(self):
         human_df, judge_df = _ratings()

@@ -28,8 +28,13 @@ Given two CSVs:
 
 | file | required columns | optional columns |
 |---|---|---|
-| `human.csv` | `item_id`, `human_label` | — |
+| `human.csv` | `item_id`, `human_label` | any number of `human_label_*` panel-rater columns |
 | `judge.csv` | `item_id`, `judge_label` | `judge_confidence` ∈ [0, 1], any numeric `criterion_*` rubric scores, any categorical `group_*` strata |
+
+`human_label` is the **primary** standard the judge is measured against. Adding
+`human_label_*` columns (e.g. `human_label_alice`, `human_label_bob`) turns the
+human side into a rater panel: the audit then reports how reliable that standard
+is in its own right.
 
 from the command line:
 
@@ -65,20 +70,28 @@ per-verdict `verdict_assignments.csv` containing:
    κ of 0.47 on 45 items can span "fair" to "substantial", and the report shows
    that. Agreement is with the *human standard* by design; the audit says so in
    its caveats.
-3. **Judge calibration** — when `judge_confidence` is present, it is scored
+3. **Human panel** — when the human CSV carries `human_label_*` panel columns,
+   the audit reports the *standard's own* reliability: the panel's multi-rater
+   nominal Krippendorff's alpha, mean pairwise agreement, and the items where
+   the panel splits. It also counts how many of those split items the judge
+   *also* disagrees with `human_label` on — i.e. where the judge diverges
+   exactly where the humans are themselves unsure. Judge agreement and
+   calibration stay measured against the primary `human_label`; the panel adds
+   uncertainty about that standard, it does not redefine it.
+4. **Judge calibration** — when `judge_confidence` is present, it is scored
    against being right by the human standard: Brier score and the same Cox
    weak-calibration slope/intercept the outcome-model report uses
    (slope < 1 = overconfident judge), each with a seeded percentile-bootstrap
    confidence interval (same `n_boot`/`random_state` and small-sample handling
    as the agreement metrics).
-4. **Verdict contestability** — `epinet.contest`'s exact nearest-centroid
+5. **Verdict contestability** — `epinet.contest`'s exact nearest-centroid
    flip-distance, pointed at the judge's verdicts in `criterion_*` space:
    per-verdict flip-distance, the contested grey zone (lowest-decile by
    default), criterion-level value-of-information ("which rubric criterion
    drives verdict flips"), and the headline table — verdicts that are **both
    contested and human-disagreeing**, i.e. the calls to re-review first.
 
-5. **Subgroup error funnel** — for each categorical `group_*` column, an
+6. **Subgroup error funnel** — for each categorical `group_*` column, an
    exploratory differential-error screen: per-stratum judge-vs-human
    disagreement rates against funnel control limits around the pooled rate at
    each stratum's size (the quality-indicator funnel, pointed at the judge).
@@ -100,8 +113,11 @@ per-verdict `verdict_assignments.csv` containing:
   contestability lens. Embedding-space contestability (scoring prompt/response
   embeddings directly) is future work.
 - **The human standard is the standard.** Where human ratings are themselves
-  uncertain or single-rater, the audit inherits that uncertainty. Multi-human
-  panels (alpha over >2 raters) are future work.
+  uncertain, the audit inherits that uncertainty — which is exactly what the
+  human-panel block (multi-rater Krippendorff's alpha over `human_label_*`
+  columns) now surfaces. Judge agreement is still measured against the primary
+  `human_label`; the panel quantifies how solid that standard is, it does not
+  replace it.
 - **Fail-closed posture.** Protocol violations (judge before seal, duplicate
   item ids, missing confidences, NaN criteria) raise rather than degrade,
   matching the governance gate's behaviour elsewhere in the toolkit.
