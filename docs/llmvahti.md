@@ -84,14 +84,24 @@ per-verdict `verdict_assignments.csv` containing:
    (slope < 1 = overconfident judge), each with a seeded percentile-bootstrap
    confidence interval (same `n_boot`/`random_state` and small-sample handling
    as the agreement metrics).
-5. **Verdict contestability** — `epinet.contest`'s exact nearest-centroid
+5. **Conformal verdict sets** — for a binary judge label space, split-conformal
+   prediction sets per verdict at risk level `--conformal-alpha` (default 0.1).
+   The judge's scalar confidence is read as a two-class probability, a
+   nonconformity threshold is calibrated on half the items, and each verdict
+   gets a set: a **singleton** (decisive at this level), a **two-label set**
+   (the confidence cannot commit — a principled grey zone), or **empty**
+   (anomalous). The set contains the human label with finite-sample marginal
+   coverage ≥ 1 − alpha; held-out empirical coverage is reported, and the
+   per-verdict sets are written to `conformal_sets.csv`. Multi-class judges are
+   skipped (a scalar confidence does not determine a full class distribution).
+6. **Verdict contestability** — `epinet.contest`'s exact nearest-centroid
    flip-distance, pointed at the judge's verdicts in `criterion_*` space:
    per-verdict flip-distance, the contested grey zone (lowest-decile by
    default), criterion-level value-of-information ("which rubric criterion
    drives verdict flips"), and the headline table — verdicts that are **both
    contested and human-disagreeing**, i.e. the calls to re-review first.
 
-6. **Subgroup error funnel** — for each categorical `group_*` column, an
+7. **Subgroup error funnel** — for each categorical `group_*` column, an
    exploratory differential-error screen: per-stratum judge-vs-human
    disagreement rates against funnel control limits around the pooled rate at
    each stratum's size (the quality-indicator funnel, pointed at the judge).

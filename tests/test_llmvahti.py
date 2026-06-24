@@ -149,6 +149,65 @@ class HumanPanelTests(unittest.TestCase):
         self.assertIn("Human panel", report)
 
 
+class ConformalVerdictSetTests(unittest.TestCase):
+    def _binary(self, n=120, seed=2):
+        rng = np.random.default_rng(seed)
+        hl = rng.choice(["pass", "fail"], n)
+        conf = np.clip(rng.beta(5, 2, n), 0.05, 0.99)
+        correct = rng.random(n) < conf
+        jl = np.where(correct, hl, np.where(hl == "pass", "fail", "pass"))
+        return pd.Series(hl), pd.Series(jl), pd.Series(conf)
+
+    def test_sets_are_well_formed_and_partition(self):
+        h, j, c = self._binary()
+        out = elv.conformal_verdict_sets(h, j, c, alpha=0.1, random_state=0)
+        self.assertEqual(out["n_singleton"] + out["n_ambiguous"] + out["n_empty"], out["n_items"])
+        sizes = out["_assignments"]["set_size"].to_numpy()
+        self.assertTrue(set(np.unique(sizes)).issubset({0, 1, 2}))
+        self.assertTrue(0.0 <= out["empirical_coverage_heldout"] <= 1.0)
+
+    def test_coverage_near_target(self):
+        # Held-out coverage should land near 1 - alpha (allow sampling slack).
+        h, j, c = self._binary(n=200)
+        out = elv.conformal_verdict_sets(h, j, c, alpha=0.1, random_state=0)
+        self.assertGreater(out["empirical_coverage_heldout"], 0.8)
+
+    def test_reproducible_under_seed(self):
+        h, j, c = self._binary()
+        a = elv.conformal_verdict_sets(h, j, c, random_state=7)["nonconformity_threshold"]
+        b = elv.conformal_verdict_sets(h, j, c, random_state=7)["nonconformity_threshold"]
+        self.assertEqual(a, b)
+
+    def test_non_binary_and_small_n_return_none(self):
+        tri = pd.Series(["a", "b", "c"] * 10)
+        self.assertIsNone(elv.conformal_verdict_sets(tri, tri.copy(), pd.Series([0.8] * 30)))
+        small = pd.Series(["pass", "fail"] * 5)
+        self.assertIsNone(elv.conformal_verdict_sets(small, small.copy(), pd.Series([0.8] * 10)))
+
+    def test_alpha_out_of_range_raises(self):
+        h, j, c = self._binary()
+        with self.assertRaises(ValueError):
+            elv.conformal_verdict_sets(h, j, c, alpha=1.5)
+
+    def test_conformal_flows_through_run_and_writes_csv(self):
+        rng = np.random.default_rng(4)
+        n = 60
+        hl = rng.choice(["pass", "fail"], n)
+        conf = np.clip(rng.beta(5, 2, n), 0.05, 0.99)
+        correct = rng.random(n) < conf
+        jl = np.where(correct, hl, np.where(hl == "pass", "fail", "pass"))
+        human_df = pd.DataFrame({"item_id": np.arange(n), "human_label": hl})
+        judge_df = pd.DataFrame({"item_id": np.arange(n), "judge_label": jl, "judge_confidence": conf})
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            human_df.to_csv(tmp / "h.csv", index=False)
+            judge_df.to_csv(tmp / "j.csv", index=False)
+            results = elv.run_blinded_audit(tmp / "h.csv", tmp / "j.csv", tmp / "out")
+            self.assertIn("conformal_verdict_sets", results)
+            self.assertTrue((tmp / "out" / "conformal_sets.csv").exists())
+            self.assertIn("Conformal verdict sets", (tmp / "out" / "judge_audit.md").read_text())
+
+
 class BlindedProtocolTests(unittest.TestCase):
     def test_judge_before_seal_is_refused(self):
         human_df, judge_df = _ratings()
