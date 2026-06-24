@@ -510,7 +510,9 @@ def train_outcome_model(
     metric is ``balanced_accuracy``, so a skewed outcome (the common
     epidemiological case) does not collapse the model toward the majority class.
     On balanced data the search selects ``class_weight=None`` and the behaviour
-    is unchanged.
+    is unchanged. The grid also tunes ``min_samples_leaf`` to regularize trees on
+    small, noisy cohorts; being cross-validation-selected, it only grows the leaf
+    when that improves held-out balanced accuracy.
 
     Nodes whose outcome is blank/NaN are treated as unlabeled scaffold: they
     contribute to the graph features but are excluded from training and
@@ -607,12 +609,19 @@ def train_outcome_model(
         # (unweighted mean recall across classes). On already-balanced data the
         # search simply selects ``class_weight=None`` and this reduces to the
         # previous behaviour.
+        #
+        # ``min_samples_leaf`` is tuned too: fully-grown trees overfit the small,
+        # noisy cohorts this toolkit targets, and a larger leaf is a standard
+        # regularizer. It is cross-validation-guarded — the search only selects a
+        # leaf size > 1 when it improves held-out balanced accuracy, so it cannot
+        # degrade the selected model and stays at 1 (the default) otherwise.
         search = GridSearchCV(
             base_model,
             {
                 "n_estimators": [100, 200],
                 "max_depth": [None, 5, 10],
                 "class_weight": [None, "balanced", "balanced_subsample"],
+                "min_samples_leaf": [1, 3],
             },
             cv=cv,
             n_jobs=1,

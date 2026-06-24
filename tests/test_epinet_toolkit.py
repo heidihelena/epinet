@@ -929,6 +929,9 @@ class ScientificStandardsTests(unittest.TestCase):
             best = result["metrics"]["best_params"]
             self.assertIn("class_weight", best)
             self.assertIn(best["class_weight"], [None, "balanced", "balanced_subsample"])
+            # The grid also regularizes via min_samples_leaf.
+            self.assertIn("min_samples_leaf", best)
+            self.assertIn(best["min_samples_leaf"], [1, 3])
 
     def test_multiclass_calibration_block_is_present_and_honest(self):
         # Calibration must not be silently absent for multiclass: Brier is
