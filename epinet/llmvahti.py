@@ -24,7 +24,12 @@ are:
    weak-calibration slope/intercept (reusing the toolkit's Cox check), each
    with the same seeded percentile-bootstrap confidence interval as the
    agreement block.
-4. **Verdict contestability** — the nearest-centroid flip-distance lens
+4. **Conformal verdict sets** — for a binary judge, split-conformal prediction
+   sets per verdict at a chosen risk level: a singleton (decisive), a two-label
+   set (the confidence cannot commit — a principled grey zone), or empty
+   (anomalous), with a finite-sample marginal coverage guarantee against the
+   human standard and reported held-out coverage.
+5. **Verdict contestability** — the nearest-centroid flip-distance lens
    (``epinet_contest``) pointed at the judge's verdicts in rubric-criterion
    space: how small a move in criterion scores would flip each verdict, which
    criterion the verdict is most sensitive to, and which verdicts sit in the
@@ -423,6 +428,119 @@ def judge_calibration(
     }
 
 
+# A split-conformal predictor needs enough items to both calibrate a threshold
+# and leave a held-out remainder to report coverage on. Below this the guarantee
+# is vacuous, so the block is skipped with a note.
+_MIN_ITEMS_FOR_CONFORMAL = 20
+
+CONFORMAL_CAVEATS = (
+    "The conformal prediction sets give a finite-sample marginal coverage guarantee: across "
+    "verdicts, the set contains the human label at least 1 - alpha of the time. It is a "
+    "statement about the verdict population, not a probability for any single verdict.",
+    "Coverage is against the human standard (the primary 'human_label'), exchangeably with the "
+    "calibration split; it inherits that standard's limitations and assumes the audited "
+    "verdicts are exchangeable with future ones.",
+    "Only binary judge/human label spaces are supported: a scalar judge confidence does not "
+    "determine a full multi-class distribution, so multi-class conformal sets are not claimed.",
+)
+
+
+def conformal_verdict_sets(
+    human: pd.Series,
+    judge: pd.Series,
+    confidence: pd.Series,
+    *,
+    alpha: float = 0.1,
+    random_state: int = 0,
+) -> dict[str, object] | None:
+    """Split-conformal prediction sets per verdict, from the judge's confidence.
+
+    For a binary label space the judge's scalar confidence ``c`` in its own label
+    is read as a two-class probability (``c`` for the judged label, ``1 - c`` for
+    the other). Split conformal calibrates a nonconformity threshold on half the
+    items and emits, for every verdict, the set of labels plausible at risk level
+    ``alpha`` — a singleton (decisive at this level), a two-label set (the judge's
+    confidence cannot commit — a principled grey zone), or empty (anomalous). The
+    set contains the human label with marginal coverage >= 1 - alpha.
+
+    Returns ``None`` (an honest "not computed") when the label space is not binary
+    or there are too few items to both calibrate and report held-out coverage.
+    The per-verdict sets are returned under ``_assignments`` for the caller to
+    write out; everything else is summary.
+    """
+    if not 0.0 < alpha < 1.0:
+        raise ValueError("alpha must be in (0, 1)")
+    frame = pd.DataFrame(
+        {
+            "human": pd.Series(human).astype("string"),
+            "judge": pd.Series(judge).astype("string"),
+            "conf": pd.to_numeric(pd.Series(confidence), errors="coerce"),
+        }
+    )
+    keep = ~(epinet_common.blank_label_mask(frame["human"]) | epinet_common.blank_label_mask(frame["judge"]))
+    frame = frame[keep]
+    if frame.empty or not np.isfinite(frame["conf"].to_numpy(dtype=float)).all():
+        return None
+    classes = sorted(set(frame["human"]) | set(frame["judge"]))
+    if len(classes) != 2 or len(frame) < _MIN_ITEMS_FOR_CONFORMAL:
+        return None
+
+    def p_of(label: str, judged: str, c: float) -> float:
+        return c if label == judged else 1.0 - c
+
+    judged = frame["judge"].to_numpy()
+    truth = frame["human"].to_numpy()
+    conf = frame["conf"].to_numpy(dtype=float)
+    n = len(frame)
+
+    rng = np.random.default_rng(random_state)
+    perm = rng.permutation(n)
+    cal_idx = perm[: n // 2]
+    test_idx = perm[n // 2 :]
+
+    # Nonconformity on calibration: 1 - p(true human label).
+    cal_scores = np.array([1.0 - p_of(truth[i], judged[i], conf[i]) for i in cal_idx])
+    n_cal = len(cal_scores)
+    level = np.ceil((n_cal + 1) * (1.0 - alpha)) / n_cal
+    qhat = 1.0 if level >= 1.0 else float(np.quantile(cal_scores, level, method="higher"))
+
+    rows = []
+    for i in range(n):
+        pset = [k for k in classes if (1.0 - p_of(k, judged[i], conf[i])) <= qhat]
+        rows.append(
+            {
+                "judge_label": judged[i],
+                "human_label": truth[i],
+                "judge_confidence": float(conf[i]),
+                "prediction_set": "|".join(pset),
+                "set_size": len(pset),
+                "covers_human": truth[i] in pset,
+            }
+        )
+    assignments = pd.DataFrame(rows, index=frame.index).reset_index(names="item_id")
+
+    test_covered = [truth[i] in [k for k in classes if (1.0 - p_of(k, judged[i], conf[i])) <= qhat] for i in test_idx]
+    sizes = assignments["set_size"].to_numpy()
+    return {
+        "method": "split conformal, binary label space",
+        "target_coverage": round(1.0 - alpha, 4),
+        "alpha": alpha,
+        "random_state": int(random_state),
+        "classes": classes,
+        "n_items": int(n),
+        "n_calibration": int(n_cal),
+        "nonconformity_threshold": qhat,
+        "empirical_coverage_heldout": float(np.mean(test_covered)) if len(test_covered) else None,
+        "n_heldout": int(len(test_idx)),
+        "mean_set_size": float(sizes.mean()),
+        "n_singleton": int(np.sum(sizes == 1)),
+        "n_ambiguous": int(np.sum(sizes == 2)),
+        "n_empty": int(np.sum(sizes == 0)),
+        "caveats": list(CONFORMAL_CAVEATS),
+        "_assignments": assignments,
+    }
+
+
 FUNNEL_CAVEATS = (
     "The subgroup error funnel is an exploratory differential-error screen: it flags strata "
     "where judge disagreement with the sealed human standard is unusually high or low after "
@@ -621,6 +739,7 @@ class BlindedAudit:
         contest_quantile: float = 0.1,
         n_boot: int = 1000,
         random_state: int = 0,
+        conformal_alpha: float = 0.1,
     ) -> dict[str, object]:
         if self._human is None or self._judge is None:
             raise RuntimeError("audit needs sealed human ratings and judge ratings")
@@ -645,13 +764,20 @@ class BlindedAudit:
             out["human_panel"] = panel
 
         if "judge_confidence" in self._judge.columns:
+            conf = self._judge["judge_confidence"].reindex(human.index)
             out["judge_calibration"] = judge_calibration(
                 human,
                 judge,
-                self._judge["judge_confidence"].reindex(human.index),
+                conf,
                 n_boot=n_boot,
                 random_state=random_state,
             )
+            conformal = conformal_verdict_sets(
+                human, judge, conf, alpha=conformal_alpha, random_state=random_state
+            )
+            if conformal is not None:
+                out["_conformal_assignments"] = conformal.pop("_assignments")
+                out["conformal_verdict_sets"] = conformal
 
         criteria = self._judge.reindex(human.index).filter(regex="^criterion_")
         criteria = criteria.select_dtypes(include=[np.number])
@@ -751,6 +877,22 @@ def audit_report(results: dict[str, object]) -> str:
                 f"{cal_ci['n_boot']} resamples (seed {cal_ci['random_state']}); "
                 f"slope CI shown after the slope/intercept pair"
             )
+    conf_sets = results.get("conformal_verdict_sets")
+    if conf_sets:
+        cov = conf_sets["empirical_coverage_heldout"]
+        lines += [
+            "",
+            "## Conformal verdict sets (per-verdict uncertainty at the chosen risk level)",
+            "",
+            f"- target coverage: **{conf_sets['target_coverage']:.0%}** (alpha = {conf_sets['alpha']}); "
+            f"held-out empirical coverage: **{_fmt(cov)}** on {conf_sets['n_heldout']} verdicts",
+            f"- decisive (singleton) sets: **{conf_sets['n_singleton']}**; "
+            f"ambiguous (both labels plausible — the principled grey zone): **{conf_sets['n_ambiguous']}**; "
+            f"empty (anomalous): **{conf_sets['n_empty']}** of {conf_sets['n_items']}",
+            f"- mean set size: **{conf_sets['mean_set_size']:.3f}** over classes {conf_sets['classes']}",
+            "",
+            *(f"- {c}" for c in conf_sets["caveats"]),
+        ]
     summary = results.get("verdict_contestability")
     if summary:
         flip = summary["flip_distance"]
@@ -818,17 +960,21 @@ def run_blinded_audit(
     contest_quantile: float = 0.1,
     n_boot: int = 1000,
     random_state: int = 0,
+    conformal_alpha: float = 0.1,
 ) -> dict[str, object]:
     """End-to-end blinded audit from two CSVs, with provenance and a report.
 
-    ``human_csv``: ``item_id, human_label``. ``judge_csv``: ``item_id,
-    judge_label`` plus optional ``judge_confidence`` (in [0, 1]), any number of
-    numeric ``criterion_*`` rubric columns, and any number of categorical
-    ``group_*`` columns (each gets a subgroup error funnel). Writes
-    ``judge_audit.json``, ``judge_audit.md``, and ``verdict_assignments.csv``.
+    ``human_csv``: ``item_id, human_label`` plus optional ``human_label_*`` panel
+    columns. ``judge_csv``: ``item_id, judge_label`` plus optional
+    ``judge_confidence`` (in [0, 1]), any number of numeric ``criterion_*`` rubric
+    columns, and any number of categorical ``group_*`` columns (each gets a
+    subgroup error funnel). Writes ``judge_audit.json``, ``judge_audit.md``,
+    ``verdict_assignments.csv``, and (when a binary judge confidence is present)
+    ``conformal_sets.csv``.
 
     ``n_boot`` and ``random_state`` control the seeded percentile bootstrap for
     the agreement-metric confidence intervals (set ``n_boot=0`` to skip it).
+    ``conformal_alpha`` is the conformal risk level (target coverage 1 - alpha).
     """
     out_path = Path(out_dir)
     out_path.mkdir(parents=True, exist_ok=True)
@@ -837,12 +983,19 @@ def run_blinded_audit(
     auditor.seal_human(pd.read_csv(human_csv))
     auditor.add_judge(pd.read_csv(judge_csv))
     results = auditor.results(
-        metric=metric, contest_quantile=contest_quantile, n_boot=n_boot, random_state=random_state
+        metric=metric,
+        contest_quantile=contest_quantile,
+        n_boot=n_boot,
+        random_state=random_state,
+        conformal_alpha=conformal_alpha,
     )
 
     assignments = results.pop("_assignments", None)
     if assignments is not None:
         assignments.to_csv(out_path / "verdict_assignments.csv", index=False)
+    conformal_assignments = results.pop("_conformal_assignments", None)
+    if conformal_assignments is not None:
+        conformal_assignments.to_csv(out_path / "conformal_sets.csv", index=False)
     results["provenance"] = epinet_common.provenance([human_csv, judge_csv])
     (out_path / "judge_audit.json").write_text(json.dumps(results, indent=2, default=str))
     (out_path / "judge_audit.md").write_text(audit_report(results))
@@ -888,7 +1041,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--random-state",
         type=int,
         default=0,
-        help="Seed for the agreement-metric bootstrap, for reproducible intervals",
+        help="Seed for the agreement-metric bootstrap and the conformal split, for reproducibility",
+    )
+    parser.add_argument(
+        "--conformal-alpha",
+        type=float,
+        default=0.1,
+        help="Conformal risk level for the per-verdict prediction sets (target coverage 1 - alpha)",
     )
     return parser
 
@@ -903,6 +1062,7 @@ def main(argv: list[str] | None = None) -> None:
         contest_quantile=args.contest_quantile,
         n_boot=args.n_boot,
         random_state=args.random_state,
+        conformal_alpha=args.conformal_alpha,
     )
     print(audit_report(results))
     print(f"Wrote audit bundle to {Path(args.output_dir).resolve()}")
