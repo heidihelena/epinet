@@ -34,7 +34,9 @@ are:
    space: how small a move in criterion scores would flip each verdict, which
    criterion the verdict is most sensitive to, and which verdicts sit in the
    contested grey zone. Grey-zone *and* human-disagreeing verdicts are the
-   audit's headline table: the calls most worth a human second look.
+   audit's headline table: the calls most worth a human second look. The same
+   lens also runs over precomputed ``embedding_*`` columns when present, so a
+   label-only judge with no rubric criteria still gets a per-verdict reading.
 
 Honest reading — surfaced in the output, not buried:
 
@@ -799,6 +801,25 @@ class BlindedAudit:
             out["n_grey_zone_disagreements"] = int(len(grey))
             out["_assignments"] = assignments.reset_index()
 
+        embeddings = self._judge.reindex(human.index).filter(regex="^embedding_")
+        embeddings = embeddings.select_dtypes(include=[np.number])
+        if embeddings.shape[1] >= 1:
+            econtest = ecn.contestability(
+                embeddings,
+                y=self._judge["judge_label"].reindex(human.index),
+                metric=metric,
+                contest_quantile=contest_quantile,
+            )
+            eassign = econtest["assignments"].set_index("ID")
+            edisagree = human.astype("string").reindex(eassign.index) != judge.astype("string").reindex(
+                eassign.index
+            )
+            eassign["human_disagrees"] = edisagree.to_numpy()
+            egrey = eassign[eassign["contested"] & eassign["human_disagrees"]]
+            out["embedding_contestability"] = econtest["summary"]
+            out["n_embedding_grey_zone_disagreements"] = int(len(egrey))
+            out["_embedding_assignments"] = eassign.reset_index()
+
         group_cols = [c for c in self._judge.columns if c.startswith("group_")]
         if group_cols:
             out["subgroup_error_funnel"] = {
@@ -911,6 +932,23 @@ def audit_report(results: dict[str, object]) -> str:
         lines += [
             f"- `{name}`: {share:.3f}" for name, share in list(summary["feature_leverage"].items())[:10]
         ]
+    embed = results.get("embedding_contestability")
+    if embed:
+        eflip = embed["flip_distance"]
+        lines += [
+            "",
+            "## Verdict contestability (judge verdicts in embedding space)",
+            "",
+            f"- verdicts scored: {embed['n_scored']}; contested (lowest "
+            f"{eflip['contest_quantile']:.0%} flip-distance): **{eflip['n_contested']}**",
+            f"- grey zone *and* human disagrees — the calls to re-review first: "
+            f"**{results['n_embedding_grey_zone_disagreements']}**",
+            "",
+            "Lets a label-only judge (no `criterion_*` rubric scores) still get a per-verdict "
+            "contestability reading. The flip-distance is over opaque embedding dimensions, so "
+            "the geometry is meaningful but the per-dimension leverage is not interpretable as "
+            "a named rubric criterion.",
+        ]
     funnels = results.get("subgroup_error_funnel")
     if funnels:
         lines += ["", "## Subgroup error funnel (exploratory differential-error screen)", ""]
@@ -996,6 +1034,9 @@ def run_blinded_audit(
     conformal_assignments = results.pop("_conformal_assignments", None)
     if conformal_assignments is not None:
         conformal_assignments.to_csv(out_path / "conformal_sets.csv", index=False)
+    embedding_assignments = results.pop("_embedding_assignments", None)
+    if embedding_assignments is not None:
+        embedding_assignments.to_csv(out_path / "embedding_contestability.csv", index=False)
     results["provenance"] = epinet_common.provenance([human_csv, judge_csv])
     (out_path / "judge_audit.json").write_text(json.dumps(results, indent=2, default=str))
     (out_path / "judge_audit.md").write_text(audit_report(results))

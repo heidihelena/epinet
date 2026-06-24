@@ -29,7 +29,7 @@ Given two CSVs:
 | file | required columns | optional columns |
 |---|---|---|
 | `human.csv` | `item_id`, `human_label` | any number of `human_label_*` panel-rater columns |
-| `judge.csv` | `item_id`, `judge_label` | `judge_confidence` ∈ [0, 1], any numeric `criterion_*` rubric scores, any categorical `group_*` strata |
+| `judge.csv` | `item_id`, `judge_label` | `judge_confidence` ∈ [0, 1], any numeric `criterion_*` rubric scores, any numeric `embedding_*` columns, any categorical `group_*` strata |
 
 `human_label` is the **primary** standard the judge is measured against. Adding
 `human_label_*` columns (e.g. `human_label_alice`, `human_label_bob`) turns the
@@ -99,7 +99,13 @@ per-verdict `verdict_assignments.csv` containing:
    per-verdict flip-distance, the contested grey zone (lowest-decile by
    default), criterion-level value-of-information ("which rubric criterion
    drives verdict flips"), and the headline table — verdicts that are **both
-   contested and human-disagreeing**, i.e. the calls to re-review first.
+   contested and human-disagreeing**, i.e. the calls to re-review first. When
+   the judge CSV carries precomputed numeric `embedding_*` columns, the same
+   flip-distance lens also runs in embedding space and is written to
+   `embedding_contestability.csv` — so a **label-only judge with no rubric
+   criteria** still gets a per-verdict contestability reading. The embedding
+   geometry is meaningful, but its per-dimension leverage is not interpretable
+   as a named criterion.
 
 7. **Subgroup error funnel** — for each categorical `group_*` column, an
    exploratory differential-error screen: per-stratum judge-vs-human
@@ -117,11 +123,13 @@ per-verdict `verdict_assignments.csv` containing:
   additive sufficient statistics. That means the federated reconstruction
   documented in [`federated.md`](federated.md) applies to judge audits too:
   multi-site judge auditing without pooling item-level data is the same math.
-- **Contestability is over the rubric, not the text.** Flip-distance lives in
-  the space of the judge's numeric criterion scores. If the judge emits only a
-  label, you still get the agreement and calibration audit, but no
-  contestability lens. Embedding-space contestability (scoring prompt/response
-  embeddings directly) is future work.
+- **Contestability runs over the rubric or over embeddings.** Flip-distance
+  lives in the space of the judge's numeric `criterion_*` scores; when those are
+  absent but precomputed `embedding_*` columns are present, the same lens runs
+  in embedding space, so a label-only judge still gets a per-verdict reading.
+  EpiNet does not generate embeddings — supply them as columns (any model), which
+  keeps the core install dependency-free. Embedding leverage is over opaque
+  dimensions and is not interpretable as a named criterion.
 - **The human standard is the standard.** Where human ratings are themselves
   uncertain, the audit inherits that uncertainty — which is exactly what the
   human-panel block (multi-rater Krippendorff's alpha over `human_label_*`
