@@ -16,6 +16,15 @@ reports the spread:
 }
 ```
 
+Tuning is **imbalance-aware**: the search grid includes `class_weight`
+(`None`, `balanced`, `balanced_subsample`) and selects on `balanced_accuracy`
+(unweighted mean recall across classes) rather than a support-weighted score.
+A support-weighted score is dominated by the majority class and would never
+select the minority weighting, so on the skewed outcomes typical of
+epidemiology the model would otherwise collapse toward the majority. On
+balanced data the search simply selects `class_weight=None`, leaving behaviour
+unchanged.
+
 If the mean is near chance, the graph features carry no signal for the outcome —
 which is exactly what the bundled random synthetic data shows. Use
 `--n-iterations 1` to reproduce the old single-split behavior, or raise it for
