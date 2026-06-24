@@ -16,6 +16,9 @@ are:
    percentile-bootstrap confidence interval (the small-sample audits LLMvahti is
    built for make a bare kappa point estimate badly under-determined), with the
    confusion matrix and every disagreeing item listed rather than averaged away.
+   When the human CSV carries ``human_label_*`` panel columns, a human-panel
+   block reports the standard's *own* reliability (multi-rater Krippendorff's
+   alpha and the items where the humans themselves split).
 3. **Judge calibration** — when the judge reports a confidence, it is scored
    against *being right by the human standard*: Brier score plus the standard
    weak-calibration slope/intercept (reusing the toolkit's Cox check), each
@@ -219,6 +222,94 @@ def agreement(
         "confidence_intervals": _bootstrap_agreement(
             a, b, n_boot=n_boot, random_state=random_state
         ),
+    }
+
+
+PANEL_CAVEATS = (
+    "The human panel block measures the reliability of the human standard itself, not the "
+    "judge. A low panel alpha means the humans disagree among themselves, so judge agreement "
+    "against the primary 'human_label' is correspondingly less meaningful on those items.",
+    "Judge agreement and calibration are still measured against the primary 'human_label' "
+    "column (the rater who rates first); the panel columns add uncertainty about that "
+    "standard, they do not redefine it.",
+)
+
+
+def _krippendorff_alpha_nominal(units: list[list[str]]) -> float | None:
+    """Nominal Krippendorff's alpha for >=2 raters, via the coincidence matrix.
+
+    ``units`` is one list of non-blank labels per item (items with fewer than two
+    ratings contribute nothing). Handles a variable number of raters per item and
+    reduces exactly to the two-rater ``krippendorff_alpha`` on complete pairs.
+    Returns ``None`` when nothing is pairable or expected disagreement is zero.
+    """
+    coincidence: dict[tuple[str, str], float] = {}
+    pairable = [u for u in units if len(u) >= 2]
+    if not pairable:
+        return None
+    for u in pairable:
+        weight = 1.0 / (len(u) - 1)
+        for i, vi in enumerate(u):
+            for j, vj in enumerate(u):
+                if i != j:
+                    coincidence[(vi, vj)] = coincidence.get((vi, vj), 0.0) + weight
+    values = sorted({v for u in pairable for v in u})
+    n_c = {c: sum(coincidence.get((c, k), 0.0) for k in values) for c in values}
+    n = sum(n_c.values())
+    if n <= 1:
+        return None
+    do_sum = sum(coincidence.get((c, k), 0.0) for c in values for k in values if c != k)
+    de_sum = sum(n_c[c] * n_c[k] for c in values for k in values if c != k)
+    if np.isclose(de_sum, 0.0):
+        return None
+    return 1.0 - (n - 1.0) * do_sum / de_sum
+
+
+def human_panel_agreement(human_frame: pd.DataFrame) -> dict[str, object] | None:
+    """Reliability of the human standard itself when more than one human rates.
+
+    Reads the primary ``human_label`` plus any ``human_label_*`` panel columns
+    (indexed by ``item_id``). With a single human rater returns ``None`` — there
+    is no panel. Otherwise reports the panel's nominal Krippendorff alpha, mean
+    pairwise raw agreement, and the items where the panel splits (the
+    uncertain-standard items), so the audit can say how solid the standard the
+    judge is being measured against actually is.
+    """
+    rater_cols = ["human_label"] + sorted(
+        c for c in human_frame.columns if c.startswith("human_label_")
+    )
+    rater_cols = [c for c in rater_cols if c in human_frame.columns]
+    if len(rater_cols) < 2:
+        return None
+    sub = human_frame[rater_cols].astype("string")
+    masks = {c: epinet_common.blank_label_mask(sub[c]) for c in rater_cols}
+
+    units: list[list[str]] = []
+    n_unanimous = 0
+    split_item_ids: list[str] = []
+    pairwise_agreements: list[float] = []
+    for item_id in sub.index:
+        labels = [sub.at[item_id, c] for c in rater_cols if not masks[c].at[item_id]]
+        if len(labels) < 2:
+            continue
+        units.append(labels)
+        pairs = [(labels[i], labels[j]) for i in range(len(labels)) for j in range(i + 1, len(labels))]
+        pairwise_agreements.append(sum(p[0] == p[1] for p in pairs) / len(pairs))
+        if len(set(labels)) == 1:
+            n_unanimous += 1
+        else:
+            split_item_ids.append(str(item_id))
+
+    return {
+        "n_raters": len(rater_cols),
+        "rater_columns": rater_cols,
+        "n_items": len(units),
+        "krippendorff_alpha": _krippendorff_alpha_nominal(units),
+        "mean_pairwise_agreement": float(np.mean(pairwise_agreements)) if pairwise_agreements else None,
+        "n_unanimous": n_unanimous,
+        "n_split": len(split_item_ids),
+        "split_item_ids": split_item_ids,
+        "caveats": list(PANEL_CAVEATS),
     }
 
 
@@ -485,6 +576,12 @@ class BlindedAudit:
     before the seal exists, and ``results`` refuses until both raters are in.
     After ``results`` is computed the audit is closed and further mutation
     raises — the same fail-closed posture as the governance gate.
+
+    The human frame may carry extra ``human_label_*`` columns (a rater panel)
+    alongside the required ``human_label``; the seal covers them too, and
+    ``results`` then reports the panel's own reliability (see
+    ``human_panel_agreement``). Judge agreement is still measured against the
+    primary ``human_label``.
     """
 
     def __init__(self) -> None:
@@ -536,6 +633,16 @@ class BlindedAudit:
             "agreement": agreement(human, judge, n_boot=n_boot, random_state=random_state),
             "caveats": list(CAVEATS),
         }
+
+        panel = human_panel_agreement(self._human)
+        if panel is not None:
+            split = set(panel["split_item_ids"])
+            if split:
+                pair = pd.DataFrame({"h": human.astype("string"), "j": judge.astype("string")})
+                disagree = (pair["h"] != pair["j"]) & pair["h"].notna() & pair["j"].notna()
+                disagree_items = {str(i) for i in pair.index[disagree.to_numpy()]}
+                panel["n_judge_disagrees_on_split_items"] = len(split & disagree_items)
+            out["human_panel"] = panel
 
         if "judge_confidence" in self._judge.columns:
             out["judge_calibration"] = judge_calibration(
@@ -602,6 +709,23 @@ def audit_report(results: dict[str, object]) -> str:
             f"- intervals: {ci['ci_level']:.0%} percentile bootstrap, "
             f"{ci['n_boot']} resamples (seed {ci['random_state']})"
         )
+    panel = results.get("human_panel")
+    if panel:
+        lines += [
+            "",
+            "## Human panel (reliability of the standard itself)",
+            "",
+            f"- human raters: **{panel['n_raters']}** ({', '.join(panel['rater_columns'])})",
+            f"- panel Krippendorff's alpha (nominal): **{_fmt(panel['krippendorff_alpha'])}**",
+            f"- mean pairwise agreement: **{_fmt(panel['mean_pairwise_agreement'])}**",
+            f"- items where the human panel splits: **{panel['n_split']}** of {panel['n_items']}",
+        ]
+        if "n_judge_disagrees_on_split_items" in panel:
+            lines.append(
+                f"- of those, the judge also disagrees with `human_label` on: "
+                f"**{panel['n_judge_disagrees_on_split_items']}** — where the humans are themselves unsure"
+            )
+        lines += ["", *(f"- {c}" for c in panel["caveats"])]
     cal = results.get("judge_calibration")
     if cal:
         lines += [
