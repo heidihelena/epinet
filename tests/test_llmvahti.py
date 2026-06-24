@@ -62,6 +62,43 @@ class AgreementStatTests(unittest.TestCase):
         self.assertAlmostEqual(result["raw_agreement"], 1.0)
 
 
+class AgreementBootstrapTests(unittest.TestCase):
+    def _pair(self, n=60, disagree_every=4, seed=3):
+        rng = np.random.default_rng(seed)
+        human = pd.Series(rng.choice(["pass", "fail"], size=n))
+        judge = human.copy()
+        flip = np.arange(0, n, disagree_every)
+        judge.iloc[flip] = judge.iloc[flip].map({"pass": "fail", "fail": "pass"})
+        return human, judge
+
+    def test_ci_block_present_and_brackets_point_estimates(self):
+        human, judge = self._pair()
+        result = elv.agreement(human, judge)
+        ci = result["confidence_intervals"]
+        self.assertIsNotNone(ci)
+        for key in ("raw_agreement", "cohens_kappa", "krippendorff_alpha"):
+            lo, hi = ci[key]
+            self.assertLessEqual(lo, hi)
+            self.assertLessEqual(lo, result[key])
+            self.assertGreaterEqual(hi, result[key])
+        self.assertEqual(ci["n_boot"], 1000)
+        self.assertEqual(ci["ci_level"], 0.95)
+
+    def test_ci_is_reproducible_under_fixed_seed(self):
+        human, judge = self._pair()
+        a = elv.agreement(human, judge, random_state=11)["confidence_intervals"]
+        b = elv.agreement(human, judge, random_state=11)["confidence_intervals"]
+        self.assertEqual(a["cohens_kappa"], b["cohens_kappa"])
+
+    def test_small_sample_reports_no_interval(self):
+        a = pd.Series(["x", "y", "x", "y", "x"])  # n=5 < _MIN_ITEMS_FOR_CI
+        self.assertIsNone(elv.agreement(a, a.copy())["confidence_intervals"])
+
+    def test_n_boot_zero_skips_interval(self):
+        human, judge = self._pair()
+        self.assertIsNone(elv.agreement(human, judge, n_boot=0)["confidence_intervals"])
+
+
 class BlindedProtocolTests(unittest.TestCase):
     def test_judge_before_seal_is_refused(self):
         human_df, judge_df = _ratings()
@@ -197,6 +234,8 @@ class RunBlindedAuditTests(unittest.TestCase):
             report = (tmp / "out" / "judge_audit.md").read_text()
             self.assertIn("blinded second rater", report)
             self.assertIn("Criterion leverage", report)
+            self.assertIn("percentile bootstrap", report)
+            self.assertIsNotNone(results["agreement"]["confidence_intervals"])
             self.assertIn("provenance", results)
 
     def test_no_criteria_still_audits_agreement(self):

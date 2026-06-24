@@ -47,8 +47,14 @@ it produces `judge_audit.md`, `judge_audit.json`, and per-verdict
    genuinely unexposed to judge output is a process responsibility, stated in
    the report rather than claimed by the software.
 2. **Inter-rater agreement** — raw agreement, Cohen's kappa, two-rater nominal
-   Krippendorff's alpha, and the full confusion matrix. Agreement is with the
-   *human standard* by design; the audit says so in its caveats.
+   Krippendorff's alpha, and the full confusion matrix, each reported with a
+   seeded percentile-bootstrap confidence interval (`n_boot`/`random_state`
+   arguments; skipped below 10 jointly-rated items, where an interval would be
+   more noise than signal). The interval is the point: on the tens-of-items
+   golden sets these audits run on, a bare kappa is badly under-determined — a
+   κ of 0.47 on 45 items can span "fair" to "substantial", and the report shows
+   that. Agreement is with the *human standard* by design; the audit says so in
+   its caveats.
 3. **Judge calibration** — when `judge_confidence` is present, it is scored
    against being right by the human standard: Brier score and the same Cox
    weak-calibration slope/intercept the outcome-model report uses

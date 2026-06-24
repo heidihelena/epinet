@@ -12,8 +12,10 @@ are:
    genuinely unexposed to the judge's output is a process responsibility the
    software cannot verify, and the report says so.
 2. **Inter-rater agreement** — raw agreement, Cohen's kappa, and a two-rater
-   nominal Krippendorff's alpha between human and judge, with the confusion
-   matrix and every disagreeing item listed rather than averaged away.
+   nominal Krippendorff's alpha between human and judge, each with a seeded
+   percentile-bootstrap confidence interval (the small-sample audits LLMvahti is
+   built for make a bare kappa point estimate badly under-determined), with the
+   confusion matrix and every disagreeing item listed rather than averaged away.
 3. **Judge calibration** — when the judge reports a confidence, it is scored
    against *being right by the human standard*: Brier score plus the standard
    weak-calibration slope/intercept (reusing the toolkit's Cox check).
@@ -58,14 +60,8 @@ CAVEATS = (
 ) + ecn.CAVEATS
 
 
-def cohens_kappa(a: pd.Series, b: pd.Series) -> float | None:
-    """Cohen's kappa for two nominal raters; ``None`` when chance-undefined.
-
-    Kappa is undefined when expected agreement is 1 (both raters constant on the
-    same label); returning ``None`` rather than 0 keeps "undefined" distinct from
-    "exactly chance-level".
-    """
-    a, b = _aligned_pair(a, b)
+def _kappa_arr(a: np.ndarray, b: np.ndarray) -> float | None:
+    """Cohen's kappa on two aligned, blank-free rating arrays (``None`` if undefined)."""
     if len(a) == 0:
         return None
     labels = sorted(set(a) | set(b))
@@ -78,15 +74,8 @@ def cohens_kappa(a: pd.Series, b: pd.Series) -> float | None:
     return (observed - expected) / (1.0 - expected)
 
 
-def krippendorff_alpha(a: pd.Series, b: pd.Series) -> float | None:
-    """Two-rater nominal Krippendorff's alpha; ``None`` when undefined.
-
-    Nominal metric over the pooled value distribution: alpha = 1 - Do/De, where
-    Do is observed disagreement across paired ratings and De the disagreement
-    expected from the pooled label frequencies. Undefined (``None``) when fewer
-    than two distinct values appear in the pool.
-    """
-    a, b = _aligned_pair(a, b)
+def _alpha_arr(a: np.ndarray, b: np.ndarray) -> float | None:
+    """Two-rater nominal Krippendorff's alpha on aligned, blank-free arrays."""
     n = len(a)
     if n == 0:
         return None
@@ -105,6 +94,29 @@ def krippendorff_alpha(a: pd.Series, b: pd.Series) -> float | None:
     return 1.0 - do / de
 
 
+def cohens_kappa(a: pd.Series, b: pd.Series) -> float | None:
+    """Cohen's kappa for two nominal raters; ``None`` when chance-undefined.
+
+    Kappa is undefined when expected agreement is 1 (both raters constant on the
+    same label); returning ``None`` rather than 0 keeps "undefined" distinct from
+    "exactly chance-level".
+    """
+    a, b = _aligned_pair(a, b)
+    return _kappa_arr(a, b)
+
+
+def krippendorff_alpha(a: pd.Series, b: pd.Series) -> float | None:
+    """Two-rater nominal Krippendorff's alpha; ``None`` when undefined.
+
+    Nominal metric over the pooled value distribution: alpha = 1 - Do/De, where
+    Do is observed disagreement across paired ratings and De the disagreement
+    expected from the pooled label frequencies. Undefined (``None``) when fewer
+    than two distinct values appear in the pool.
+    """
+    a, b = _aligned_pair(a, b)
+    return _alpha_arr(a, b)
+
+
 def _aligned_pair(a: pd.Series, b: pd.Series) -> tuple[np.ndarray, np.ndarray]:
     """Align two rating series on their shared index and drop blank labels."""
     a = pd.Series(a).astype("string")
@@ -115,8 +127,79 @@ def _aligned_pair(a: pd.Series, b: pd.Series) -> tuple[np.ndarray, np.ndarray]:
     return frame["a"].to_numpy(), frame["b"].to_numpy()
 
 
-def agreement(human: pd.Series, judge: pd.Series) -> dict[str, object]:
-    """Inter-rater agreement between the primary (human) and second (judge) rater."""
+# Below this many jointly-rated items a bootstrap interval is more noise than
+# signal, so the CI block is reported as null with the count instead. The
+# LLMvahti regime (25-50 golden items) sits comfortably above this floor.
+_MIN_ITEMS_FOR_CI = 10
+
+
+def _bootstrap_agreement(
+    a: np.ndarray,
+    b: np.ndarray,
+    *,
+    n_boot: int,
+    random_state: int,
+    alpha: float = 0.05,
+) -> dict[str, object] | None:
+    """Percentile-bootstrap CIs for the agreement metrics on aligned arrays.
+
+    Resamples the paired items with replacement and recomputes raw agreement,
+    Cohen's kappa, and Krippendorff's alpha on each replicate. Kappa and alpha
+    are undefined on a degenerate resample (e.g. one that draws a single label);
+    those replicates are excluded from the interval and counted, so the reader
+    can see how often the statistic was estimable. Returns ``None`` when there
+    are too few items or ``n_boot`` is non-positive — an honest "no interval"
+    rather than a falsely tight one.
+    """
+    n = len(a)
+    if n < _MIN_ITEMS_FOR_CI or n_boot <= 0:
+        return None
+    rng = np.random.default_rng(random_state)
+    raw: list[float] = []
+    kappa: list[float] = []
+    alpha_vals: list[float] = []
+    for _ in range(n_boot):
+        idx = rng.integers(0, n, size=n)
+        ra, rb = a[idx], b[idx]
+        raw.append(float(np.mean(ra == rb)))
+        k = _kappa_arr(ra, rb)
+        if k is not None:
+            kappa.append(k)
+        al = _alpha_arr(ra, rb)
+        if al is not None:
+            alpha_vals.append(al)
+    lo, hi = 100 * alpha / 2.0, 100 * (1.0 - alpha / 2.0)
+
+    def _ci(values: list[float]) -> list[float] | None:
+        return [float(np.percentile(values, lo)), float(np.percentile(values, hi))] if values else None
+
+    return {
+        "method": "percentile bootstrap over paired items",
+        "n_boot": int(n_boot),
+        "random_state": int(random_state),
+        "ci_level": round(1.0 - alpha, 4),
+        "raw_agreement": _ci(raw),
+        "cohens_kappa": _ci(kappa),
+        "krippendorff_alpha": _ci(alpha_vals),
+        "n_undefined_kappa": int(n_boot - len(kappa)),
+        "n_undefined_alpha": int(n_boot - len(alpha_vals)),
+    }
+
+
+def agreement(
+    human: pd.Series,
+    judge: pd.Series,
+    *,
+    n_boot: int = 1000,
+    random_state: int = 0,
+) -> dict[str, object]:
+    """Inter-rater agreement between the primary (human) and second (judge) rater.
+
+    Point estimates always; a seeded percentile-bootstrap ``confidence_intervals``
+    block when there are enough jointly-rated items (see ``_MIN_ITEMS_FOR_CI``).
+    The interval matters here because the LLMvahti regime is small (tens of
+    golden items), where a bare kappa point estimate is badly under-determined.
+    """
     a, b = _aligned_pair(human, judge)
     n = len(a)
     if n == 0:
@@ -127,9 +210,12 @@ def agreement(human: pd.Series, judge: pd.Series) -> dict[str, object]:
         "n_items": n,
         "labels": labels,
         "raw_agreement": float(np.mean(a == b)),
-        "cohens_kappa": cohens_kappa(pd.Series(a), pd.Series(b)),
-        "krippendorff_alpha": krippendorff_alpha(pd.Series(a), pd.Series(b)),
+        "cohens_kappa": _kappa_arr(a, b),
+        "krippendorff_alpha": _alpha_arr(a, b),
         "confusion_human_rows_judge_cols": confusion,
+        "confidence_intervals": _bootstrap_agreement(
+            a, b, n_boot=n_boot, random_state=random_state
+        ),
     }
 
 
@@ -364,6 +450,8 @@ class BlindedAudit:
         *,
         metric: str = "euclidean",
         contest_quantile: float = 0.1,
+        n_boot: int = 1000,
+        random_state: int = 0,
     ) -> dict[str, object]:
         if self._human is None or self._judge is None:
             raise RuntimeError("audit needs sealed human ratings and judge ratings")
@@ -373,7 +461,7 @@ class BlindedAudit:
         judge = self._judge["judge_label"].reindex(human.index)
         out: dict[str, object] = {
             "human_ratings_sha256": self._human_sha,
-            "agreement": agreement(human, judge),
+            "agreement": agreement(human, judge, n_boot=n_boot, random_state=random_state),
             "caveats": list(CAVEATS),
         }
 
@@ -423,10 +511,21 @@ def audit_report(results: dict[str, object]) -> str:
         "## Inter-rater agreement",
         "",
         f"- items rated by both: **{agree['n_items']}**",
-        f"- raw agreement: **{agree['raw_agreement']:.3f}**",
-        f"- Cohen's kappa: **{_fmt(agree['cohens_kappa'])}**",
-        f"- Krippendorff's alpha (nominal): **{_fmt(agree['krippendorff_alpha'])}**",
+        f"- raw agreement: **{agree['raw_agreement']:.3f}**{_ci_suffix(agree, 'raw_agreement')}",
+        f"- Cohen's kappa: **{_fmt(agree['cohens_kappa'])}**{_ci_suffix(agree, 'cohens_kappa')}",
+        f"- Krippendorff's alpha (nominal): **{_fmt(agree['krippendorff_alpha'])}**"
+        f"{_ci_suffix(agree, 'krippendorff_alpha')}",
     ]
+    ci = agree.get("confidence_intervals")
+    if ci is None:
+        lines.append(
+            f"- *(no bootstrap interval: fewer than {_MIN_ITEMS_FOR_CI} jointly-rated items)*"
+        )
+    else:
+        lines.append(
+            f"- intervals: {ci['ci_level']:.0%} percentile bootstrap, "
+            f"{ci['n_boot']} resamples (seed {ci['random_state']})"
+        )
     cal = results.get("judge_calibration")
     if cal:
         lines += [
@@ -486,6 +585,17 @@ def _fmt(value: object, digits: int = 3) -> str:
     return f"{float(value):.{digits}f}"
 
 
+def _ci_suffix(agreement_block: dict[str, object], key: str, digits: int = 3) -> str:
+    """`` [lo, hi]`` for a metric's bootstrap CI, or empty when unavailable."""
+    ci = agreement_block.get("confidence_intervals")
+    if not ci:
+        return ""
+    interval = ci.get(key)
+    if not interval:
+        return ""
+    return f" [{interval[0]:.{digits}f}, {interval[1]:.{digits}f}]"
+
+
 def run_blinded_audit(
     human_csv: str | Path,
     judge_csv: str | Path,
@@ -493,6 +603,8 @@ def run_blinded_audit(
     *,
     metric: str = "euclidean",
     contest_quantile: float = 0.1,
+    n_boot: int = 1000,
+    random_state: int = 0,
 ) -> dict[str, object]:
     """End-to-end blinded audit from two CSVs, with provenance and a report.
 
@@ -501,6 +613,9 @@ def run_blinded_audit(
     numeric ``criterion_*`` rubric columns, and any number of categorical
     ``group_*`` columns (each gets a subgroup error funnel). Writes
     ``judge_audit.json``, ``judge_audit.md``, and ``verdict_assignments.csv``.
+
+    ``n_boot`` and ``random_state`` control the seeded percentile bootstrap for
+    the agreement-metric confidence intervals (set ``n_boot=0`` to skip it).
     """
     out_path = Path(out_dir)
     out_path.mkdir(parents=True, exist_ok=True)
@@ -508,7 +623,9 @@ def run_blinded_audit(
     auditor = BlindedAudit()
     auditor.seal_human(pd.read_csv(human_csv))
     auditor.add_judge(pd.read_csv(judge_csv))
-    results = auditor.results(metric=metric, contest_quantile=contest_quantile)
+    results = auditor.results(
+        metric=metric, contest_quantile=contest_quantile, n_boot=n_boot, random_state=random_state
+    )
 
     assignments = results.pop("_assignments", None)
     if assignments is not None:
