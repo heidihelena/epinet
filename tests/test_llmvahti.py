@@ -208,6 +208,48 @@ class ConformalVerdictSetTests(unittest.TestCase):
             self.assertIn("Conformal verdict sets", (tmp / "out" / "judge_audit.md").read_text())
 
 
+class EmbeddingContestabilityTests(unittest.TestCase):
+    def _embed_ratings(self, n=40, seed=11):
+        rng = np.random.default_rng(seed)
+        human = np.where(np.arange(n) % 2 == 0, "pass", "fail")
+        judge = human.copy()
+        judge[::5] = np.where(judge[::5] == "pass", "fail", "pass")
+        base = np.where(judge == "pass", 1.0, -1.0)
+        human_df = pd.DataFrame({"item_id": np.arange(n), "human_label": human})
+        judge_df = pd.DataFrame(
+            {
+                "item_id": np.arange(n),
+                "judge_label": judge,
+                # No criterion_* columns: label-only judge, embeddings only.
+                "embedding_0": base + rng.normal(0, 0.3, n),
+                "embedding_1": base + rng.normal(0, 0.5, n),
+                "embedding_2": rng.normal(0, 1.0, n),
+            }
+        )
+        return human_df, judge_df
+
+    def test_embedding_block_present_without_criteria(self):
+        human_df, judge_df = self._embed_ratings()
+        audit = elv.BlindedAudit()
+        audit.seal_human(human_df)
+        audit.add_judge(judge_df)
+        results = audit.results()
+        self.assertIn("embedding_contestability", results)
+        self.assertNotIn("verdict_contestability", results)  # no criterion_* columns
+        self.assertEqual(results["embedding_contestability"]["n_scored"], len(human_df))
+
+    def test_embedding_contestability_writes_csv_and_report(self):
+        human_df, judge_df = self._embed_ratings()
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            human_df.to_csv(tmp / "h.csv", index=False)
+            judge_df.to_csv(tmp / "j.csv", index=False)
+            results = elv.run_blinded_audit(tmp / "h.csv", tmp / "j.csv", tmp / "out")
+            self.assertTrue((tmp / "out" / "embedding_contestability.csv").exists())
+            self.assertIn("embedding space", (tmp / "out" / "judge_audit.md").read_text())
+            self.assertIn("n_embedding_grey_zone_disagreements", results)
+
+
 class BlindedProtocolTests(unittest.TestCase):
     def test_judge_before_seal_is_refused(self):
         human_df, judge_df = _ratings()
