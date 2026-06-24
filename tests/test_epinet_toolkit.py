@@ -903,6 +903,33 @@ class ScientificStandardsTests(unittest.TestCase):
         graph = et.build_graph(nodes, edges)
         return nodes, et.generate_graph_features(graph)
 
+    def _imbalanced_cohort(self, n=80, minority=16, seed=0):
+        # A skewed binary outcome (minority count fixed for a deterministic split)
+        # with real-but-imperfect signal in `Value`, on a chain graph.
+        rng = np.random.default_rng(seed)
+        rows = [
+            {"ID": f"N{i}", "Outcome": 1 if i < minority else 0,
+             "Value": float(rng.normal((1 if i < minority else 0) * 2.0, 1.0))}
+            for i in range(n)
+        ]
+        nodes = pd.DataFrame(rows)
+        edges = pd.DataFrame([{"SourceID": f"N{i}", "TargetID": f"N{i + 1}"} for i in range(n - 1)])
+        graph = et.build_graph(nodes, edges)
+        return nodes, et.generate_graph_features(graph)
+
+    def test_tuning_is_imbalance_aware(self):
+        # The hyperparameter search must expose class_weight so a skewed outcome
+        # can be weighted rather than collapsing to the majority class.
+        nodes, features = self._imbalanced_cohort()
+        with tempfile.TemporaryDirectory() as td:
+            result = et.train_outcome_model(
+                nodes, features, id_column="ID", outcome_column="Outcome",
+                output_dir=Path(td), n_iterations=1,
+            )
+            best = result["metrics"]["best_params"]
+            self.assertIn("class_weight", best)
+            self.assertIn(best["class_weight"], [None, "balanced", "balanced_subsample"])
+
     def test_multiclass_calibration_block_is_present_and_honest(self):
         # Calibration must not be silently absent for multiclass: Brier is
         # reported, slope/intercept are explicitly None with a stated reason.

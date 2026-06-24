@@ -505,7 +505,12 @@ def train_outcome_model(
     splits (seeds ``random_state .. random_state + n_iterations - 1``) and the
     summary reports the mean, standard deviation, and range of each metric.
     Hyperparameters are tuned once on the primary split and held fixed across
-    iterations so the loop measures split variance, not tuning variance.
+    iterations so the loop measures split variance, not tuning variance. Tuning
+    is imbalance-aware: the grid includes ``class_weight`` and the selection
+    metric is ``balanced_accuracy``, so a skewed outcome (the common
+    epidemiological case) does not collapse the model toward the majority class.
+    On balanced data the search selects ``class_weight=None`` and the behaviour
+    is unchanged.
 
     Nodes whose outcome is blank/NaN are treated as unlabeled scaffold: they
     contribute to the graph features but are excluded from training and
@@ -593,12 +598,25 @@ def train_outcome_model(
     base_model = RandomForestClassifier(random_state=random_state, n_jobs=1)
 
     if cv >= 2:
+        # Imbalance-aware model selection. Epidemiological outcomes are usually
+        # skewed, where the default unweighted forest collapses toward the
+        # majority class. Tuning ``class_weight`` lets the search learn to weight
+        # the minority, but only if the selection metric rewards it: a
+        # support-weighted score (e.g. f1_weighted) is dominated by the majority
+        # and never picks the weighting, so the scorer is ``balanced_accuracy``
+        # (unweighted mean recall across classes). On already-balanced data the
+        # search simply selects ``class_weight=None`` and this reduces to the
+        # previous behaviour.
         search = GridSearchCV(
             base_model,
-            {"n_estimators": [100, 200], "max_depth": [None, 5, 10]},
+            {
+                "n_estimators": [100, 200],
+                "max_depth": [None, 5, 10],
+                "class_weight": [None, "balanced", "balanced_subsample"],
+            },
             cv=cv,
             n_jobs=1,
-            scoring="f1_weighted",
+            scoring="balanced_accuracy",
         )
         search.fit(X_train, y_train)
         tuned_model = search.best_estimator_
