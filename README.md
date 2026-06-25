@@ -33,7 +33,16 @@ evaluation is the default path**: a label-permutation null, calibration, and
 so a good score reflects real signal rather than leakage or chance. Developed as
 part of **Vahtian**; MIT licensed.
 
+**Jump to:** [What it does](#what-it-does) · [Install](#install) ·
+[Quick start](#quick-start) · [What it looks like](#what-it-looks-like) ·
+[EpiNet Workbench](#epinet-workbench) · [Documentation](#documentation) ·
+[Scope and caveats](#scope-and-caveats) · [Tests](#tests-and-linting) ·
+[Citation](#citation) · [License](#license)
+
 ## What it looks like
+
+<details>
+<summary><b>Screenshot — the contestability lens on a lymphoma cohort</b></summary>
 
 ![Contestability panel on a lymphoma cohort](examples/sample-outputs/lymphoma/contestability.png)
 
@@ -42,6 +51,8 @@ call is from flipping, with the most-contested tail shaded. Right: value of
 information — the features that most drive boundary flips (CD10, cyclin D1,
 Ki67, …). The same lens runs on any cohort. More figures in
 [examples/sample-outputs/](examples/sample-outputs/).*
+
+</details>
 
 ## What it does
 
@@ -116,6 +127,9 @@ Key outputs in `epinet_outputs/`:
 The data format is documented in [Data-format.md](Data-format.md).
 
 ## EpiNet Workbench
+
+<details>
+<summary><b>Local CSV-to-report interface — plan → run → optional UI</b></summary>
 
 EpiNet Workbench is a local CSV-to-report interface. It does **not** replace the
 command line and it is **not** AutoML: it never searches models or chases a
@@ -196,7 +210,12 @@ publication-quality `plots/`, and `environment.txt`.
 
 **Scope:** research and education only. Not clinical decision support.
 
+</details>
+
 ## Documentation
+
+<details>
+<summary><b>Docs index — methods, examples, federated, governance, validation</b></summary>
 
 - **[docs/methods.md](docs/methods.md)** — evaluation design (iterative
   evaluation, permutation null, community-aware splitting), the diagnostic
@@ -216,7 +235,12 @@ Each worked example also has a builder script and a walkthrough under
 `examples/*_usecase.md`; the federated and governance pipelines have runnable
 demos under `examples/federated_*` and `examples/governance_*`.
 
+</details>
+
 ## Scope and caveats
+
+<details>
+<summary><b>What EpiNet does <i>not</i> do, and what to add before any real-world use</b></summary>
 
 The model is intentionally simple. It does **not** infer causality, outbreak
 dynamics, clinical risk, or intervention effects. Network features can be useful
@@ -234,7 +258,12 @@ For clinical prediction, align reporting with
 [TRIPOD+AI](https://doi.org/10.1136/bmj-2023-078378); for AI interventions, the
 bar moves toward prospective evaluation (e.g. CONSORT-AI).
 
+</details>
+
 ## Tests and linting
+
+<details>
+<summary><b>How to run the tests and the linter</b></summary>
 
 ```bash
 python -m unittest discover -s tests   # or: pytest  (adds the hypothesis property tests)
@@ -244,10 +273,17 @@ ruff check .
 GitHub Actions runs both on every push and pull request across Python
 3.10–3.12 (`.github/workflows/tests.yml`).
 
+</details>
+
 ## Citation
+
+<details>
+<summary><b>How to cite EpiNet</b></summary>
 
 If you use EpiNet, please cite it via [`CITATION.cff`](CITATION.cff) (GitHub's
 "Cite this repository" button generates APA/BibTeX from it).
+
+</details>
 
 ## License
 
