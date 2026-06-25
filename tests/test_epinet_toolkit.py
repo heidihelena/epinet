@@ -1191,15 +1191,36 @@ class FederatedFitTests(unittest.TestCase):
     def test_aggregate_message_is_only_counts_and_sums(self):
         X, y = self._labeled_matrix(n=10)
         agg = efed.site_aggregates(X, y)
-        # The message carries no per-row data — only counts and summed vectors.
+        # The message carries no per-row data — only counts, sums, and centered
+        # moments (mean-subtracted second moments for a stable variance/covariance).
         self.assertEqual(
             set(agg),
-            {"columns", "n", "sum", "sumsq", "second_moment", "class_n", "class_sum", "suppressed"},
+            {"columns", "n", "sum", "mean", "m2", "comoment", "class_n", "class_sum", "suppressed"},
         )
         self.assertEqual(len(agg["sum"]), X.shape[1])
-        self.assertEqual(np.asarray(agg["second_moment"]).shape, (X.shape[1], X.shape[1]))
+        self.assertEqual(len(agg["m2"]), X.shape[1])
+        self.assertEqual(np.asarray(agg["comoment"]).shape, (X.shape[1], X.shape[1]))
         self.assertEqual(agg["n"], len(X))
         self.assertEqual(sum(agg["class_n"].values()), len(X))
+
+    def test_federated_fit_is_stable_under_large_offset_feature(self):
+        # A feature whose mean dwarfs its spread is the classic catastrophic-
+        # cancellation case for sumsq/n - mean**2. The centered-moment fit must
+        # still reconstruct the centralized scaler/centroids to ~fp precision.
+        rng = np.random.default_rng(7)
+        n = 400
+        X = pd.DataFrame({
+            "big": 1e6 + rng.normal(0.0, 1.0, size=n),   # offset >> spread
+            "ok": rng.normal(0.0, 1.0, size=n),
+        }, index=[f"n{i}" for i in range(n)])
+        y = pd.Series((rng.random(n) < 0.5).astype(int), index=X.index, name="Outcome")
+        sites = np.array([f"S{i % 4}" for i in range(n)])
+        res = efed.simulate(X, y, sites)
+        # Naive sumsq reconstruction drifted ~1e-4 on sd here; centered moments
+        # bring it back to floating-point agreement with the centralized fit.
+        self.assertLess(res["max_sd_diff"], 1e-9)
+        self.assertLess(res["max_mean_diff"], 1e-6)
+        self.assertLess(res["max_centroid_diff"], 1e-9)
 
     def test_small_cell_suppression_drops_rare_class(self):
         X = pd.DataFrame(
