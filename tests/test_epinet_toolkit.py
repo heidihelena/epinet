@@ -1537,6 +1537,26 @@ class GovernanceGateTests(unittest.TestCase):
         self.assertIn("class_n[rare]=3", manifest["suppressed_cells"])
         self.assertEqual(len(manifest["payload_sha256"]), 64)
 
+    def test_extreme_flip_values_are_withheld_at_egress(self):
+        # flip_min / flip_max are one node's exact score apiece (least/most
+        # contestable patient). The gate must withhold them even when the cohort
+        # clears the record floor, while distribution-shape stats still cross.
+        policy = eg.DisclosurePolicy(min_cell=5)
+        payload = {
+            "n": 50, "flip_count": 50, "flip_sum": 100.0, "flip_sumsq": 250.0,
+            "flip_min": 0.12, "flip_max": 7.84, "flip_hist": [10, 20, 20],
+            "runner_up_counts": {"x": 30, "y": 20},
+        }
+        redacted, manifest = eg.check_egress(
+            payload, policy=policy, consent=self._consent(), now=self.NOW)
+        self.assertIsNone(redacted["flip_min"])
+        self.assertIsNone(redacted["flip_max"])
+        self.assertTrue(any("flip_min" in s for s in manifest["suppressed_cells"]))
+        self.assertTrue(any("flip_max" in s for s in manifest["suppressed_cells"]))
+        # Distribution shape/spread still cross — only the extremes are withheld.
+        self.assertEqual(redacted["flip_sum"], 100.0)
+        self.assertEqual(redacted["flip_hist"], [10, 20, 20])
+
     def test_suppression_survives_complementary_subtraction(self):
         # The suppressed cell must not be recoverable as total - sum(retained).
         policy = eg.DisclosurePolicy(min_cell=5)

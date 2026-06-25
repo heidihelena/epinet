@@ -410,11 +410,12 @@ def combine_contestability(
 ) -> dict[str, object]:
     """Pool per-site contestability summaries into a federated summary.
 
-    Flip-distance mean/std/min/max, runner-up counts, value-of-information, and
-    agreement are EXACT additive aggregates. The contested threshold is the one
-    approximate piece: it reads a quantile off the summed shared-bin histogram
-    (bin-resolution accuracy), because a quantile is an order statistic, not a
-    sum.
+    Flip-distance mean/std, runner-up counts, value-of-information, and agreement
+    are EXACT additive aggregates. min/max are exact too WHEN present, but the
+    egress gate withholds them as extreme single-record values (then this returns
+    ``None`` for them). The contested threshold is the one approximate piece: it
+    reads a quantile off the summed shared-bin histogram (bin-resolution
+    accuracy), because a quantile is an order statistic, not a sum.
     """
     if not summaries:
         raise ValueError("need at least one site summary")
@@ -429,8 +430,8 @@ def combine_contestability(
     flip_sumsq = sum(float(s["flip_sumsq"]) for s in summaries)
     mean = flip_sum / count if count else None
     std = float(np.sqrt(max(flip_sumsq / count - mean**2, 0.0))) if count else None
-    mins = [s["flip_min"] for s in summaries if s["flip_min"] is not None]
-    maxs = [s["flip_max"] for s in summaries if s["flip_max"] is not None]
+    mins = [s["flip_min"] for s in summaries if s.get("flip_min") is not None]
+    maxs = [s["flip_max"] for s in summaries if s.get("flip_max") is not None]
 
     hist = np.sum([np.asarray(s["flip_hist"], dtype=float) for s in summaries], axis=0)
     # Approximate quantile threshold from the summed histogram, interpolating

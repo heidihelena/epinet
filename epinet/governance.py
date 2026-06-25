@@ -149,6 +149,17 @@ def suppress_small_cells(payload: dict, min_cell: int) -> tuple[dict, list[str]]
                 redacted["runner_up_counts"].pop(cls, None)
                 suppressed.append(f"runner_up_counts[{cls}]={n}")
 
+    # Extreme single-record values: flip_min / flip_max are ONE node's exact score
+    # apiece (the least / most contestable patient), not an aggregate — an
+    # individual disclosure even in a large cohort, which neither cell suppression
+    # nor the record floor catches. Withhold them at egress; the shared-bin
+    # histogram plus count/sum/sumsq still convey the distribution's shape and
+    # spread. Combiners already treat a missing extreme as ``None``.
+    for extreme in ("flip_min", "flip_max"):
+        if redacted.get(extreme) is not None:
+            redacted[extreme] = None
+            suppressed.append(f"{extreme} withheld (extreme single-record value)")
+
     # Secondary (complementary) suppression: a published total that equals the
     # sum of a group's cells lets a suppressed cell be recovered by subtraction
     # (total - sum(retained)). Where we suppressed any cell in a group, reduce
