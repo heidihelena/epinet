@@ -33,11 +33,25 @@ evaluation is the default path**: a label-permutation null, calibration, and
 so a good score reflects real signal rather than leakage or chance. Developed as
 part of **Vahtian**; MIT licensed.
 
-**Jump to:** [What it does](#what-it-does) · [Install](#install) ·
-[Quick start](#quick-start) · [What it looks like](#what-it-looks-like) ·
+**Jump to:** [About](#about-this-project) · [What it does](#what-it-does) ·
+[Install](#install) · [Quick start](#quick-start) ·
+[What it looks like](#what-it-looks-like) ·
 [EpiNet Workbench](#epinet-workbench) · [Documentation](#documentation) ·
 [Scope and caveats](#scope-and-caveats) · [Tests](#tests-and-linting) ·
 [Citation](#citation) · [License](#license)
+
+## About this project
+
+EpiNet began a few years ago as a personal Python coding project and has grown
+into a research-methods demonstrator with one organizing principle: **honest
+evaluation is the default, not an afterthought.** Where most modelling code
+optimizes a headline number, EpiNet is built to resist fooling itself — a
+label-permutation null, calibration, bootstrap intervals, and community-aware
+splitting run alongside every headline metric; contestability makes each call
+inspectable; and the federated layer shares findings across sites without
+pooling records. The name reads as *Epistemic Network*: the question is not just
+what the model predicts, but how well-founded each call is. It remains a
+**research and education demonstrator — not clinical decision support.**
 
 ## What it looks like
 
