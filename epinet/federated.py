@@ -125,10 +125,31 @@ def site_aggregates(
     }
 
 
+def _oas_shrinkage(cov: np.ndarray, n: int) -> float:
+    """Oracle Approximating Shrinkage intensity toward the scaled identity.
+
+    The closed form of Chen et al. (2010), matching scikit-learn's ``OAS``:
+    shrink the sample covariance toward ``(tr(cov)/d)·I`` by an intensity that
+    depends only on ``tr(cov)``, ``tr(cov²)``, the feature count ``d``, and the
+    sample size ``n``. Every one of those is available from the pooled
+    covariance the coordinator already reconstructs, so the *data-driven*
+    intensity is computed federatedly — no 4th-moment aggregates, no records.
+    """
+    d = cov.shape[0]
+    if d == 0:
+        return 0.0
+    tr = float(np.trace(cov))
+    tr2 = float(np.trace(cov @ cov))
+    den = (n + 1.0) * (tr2 - tr * tr / d)
+    if den <= 0.0:
+        return 1.0
+    return float(min((tr2 + tr * tr) / den, 1.0))
+
+
 def combine_aggregates(
     aggregates: list[dict[str, object]],
     *,
-    shrinkage: float = 0.0,
+    shrinkage: float | str = 0.0,
 ) -> dict[str, object]:
     """Combine per-site aggregate messages into the shared scaler + centroids.
 
@@ -137,17 +158,23 @@ def combine_aggregates(
     order (sorted by label) that a centralized ``standardize`` +
     ``class_centroids`` would produce.
 
-    ``shrinkage`` (0–1) optionally regularizes the standardized covariance used
-    for the Mahalanobis precision, shrinking it toward the identity:
-    ``(1 - shrinkage) * cov + shrinkage * I``. Because the features are
-    standardized the covariance has unit diagonal, so the identity is its natural
-    Ledoit-Wolf target — and the shrink is computed from the already-shipped
+    ``shrinkage`` optionally regularizes the standardized covariance used for the
+    Mahalanobis precision, shrinking it toward the identity:
+    ``(1 - λ) * cov + λ * I``. Pass a float in ``[0, 1]`` for a fixed intensity,
+    or ``"oas"`` for the **data-driven** Oracle Approximating Shrinkage intensity
+    (matches scikit-learn's ``OAS``). Because the features are standardized the
+    covariance has unit diagonal, so the identity is its natural target — and
+    both the shrink and the OAS intensity are computed from the already-shipped
     centered co-moment, needing no extra aggregate and no record access. It
     conditions ``inv_cov`` when features are collinear or a site is small. The
-    default ``0.0`` reproduces the exact empirical reconstruction.
+    default ``0.0`` reproduces the exact empirical reconstruction. The effective
+    numeric intensity is returned as ``shrinkage`` in the fit.
     """
-    if not 0.0 <= shrinkage <= 1.0:
-        raise ValueError(f"shrinkage must be in [0, 1], got {shrinkage}")
+    if isinstance(shrinkage, str):
+        if shrinkage != "oas":
+            raise ValueError(f"shrinkage string must be 'oas', got {shrinkage!r}")
+    elif not 0.0 <= shrinkage <= 1.0:
+        raise ValueError(f"shrinkage must be in [0, 1] or 'oas', got {shrinkage}")
     if not aggregates:
         raise ValueError("need at least one site aggregate")
     aggregates = _unwrap(aggregates)
@@ -222,17 +249,17 @@ def combine_aggregates(
     # cov(X) = C/n from the folded centered co-moment (population); cov(Xz)
     # divides by the sd outer product. This is the EMPIRICAL covariance — exactly
     # federatable and, via the centered co-moment, free of the cancellation that
-    # ``second_moment/n - mean.mean^T`` suffered. ``shrinkage`` below applies a
-    # specified-intensity shrink toward the identity; matching production
-    # Ledoit-Wolf's DATA-DRIVEN intensity exactly would additionally need
-    # 4th-moment aggregates (noted, not built).
+    # ``second_moment/n - mean.mean^T`` suffered.
     cov_full = run_c / total_n
     cov_kept = cov_full[np.ix_(kept_idx, kept_idx)]
     cov_z = cov_kept / np.outer(sd_kept, sd_kept)
     # Optional shrinkage toward the identity (the standardized covariance has unit
-    # diagonal, so I is its natural target). lambda=0 leaves cov_z untouched.
+    # diagonal, so I is its natural target). "oas" picks the intensity from the
+    # pooled covariance itself (data-driven); a float fixes it; 0 leaves cov_z
+    # untouched. Either way the inputs are aggregates only — no records.
+    lam = _oas_shrinkage(cov_z, total_n) if shrinkage == "oas" else float(shrinkage)
     eye = np.eye(len(kept_idx))
-    cov_reg = (1.0 - shrinkage) * cov_z + shrinkage * eye
+    cov_reg = (1.0 - lam) * cov_z + lam * eye
     ridge = 1e-6 * eye
     inv_cov = np.linalg.pinv(cov_reg + ridge)
 
@@ -246,7 +273,8 @@ def combine_aggregates(
         "centroids": centroids,
         "cov_standardized": cov_z,
         "inv_cov": inv_cov,
-        "shrinkage": float(shrinkage),
+        "shrinkage": float(lam),
+        "shrinkage_method": "oas" if shrinkage == "oas" else "fixed",
     }
 
 
@@ -269,7 +297,7 @@ def simulate(
     site_labels: list[object] | pd.Series | np.ndarray,
     *,
     min_cell: int = 0,
-    shrinkage: float = 0.0,
+    shrinkage: float | str = 0.0,
 ) -> dict[str, object]:
     """Partition rows across sites, federate the fit, and compare to centralized.
 
