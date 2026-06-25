@@ -998,6 +998,33 @@ class ScientificStandardsTests(unittest.TestCase):
             else:
                 self.assertAlmostEqual(cal["brier"], rc["brier_raw"])
 
+    def test_threshold_tuning_is_opt_in_and_does_not_touch_probabilities(self):
+        # Decision-threshold tuning is OFF by default (no block, default argmax
+        # predictions). When ON, it reports a threshold in [0, 1] with the
+        # 0.5-vs-tuned held-out comparison, and — being a labels-only change —
+        # must leave the probability metric (AUROC) untouched.
+        nodes, features = self._imbalanced_cohort()
+        with tempfile.TemporaryDirectory() as td:
+            base = et.train_outcome_model(
+                nodes, features, id_column="ID", outcome_column="Outcome",
+                output_dir=Path(td), n_iterations=1, n_bootstrap=0,
+            )
+        with tempfile.TemporaryDirectory() as td:
+            tuned = et.train_outcome_model(
+                nodes, features, id_column="ID", outcome_column="Outcome",
+                output_dir=Path(td), n_iterations=1, n_bootstrap=0,
+                tune_threshold=True,
+            )
+        self.assertNotIn("threshold_tuning", base["metrics"])
+        tt = tuned["metrics"]["threshold_tuning"]
+        self.assertGreaterEqual(tt["threshold"], 0.0)
+        self.assertLessEqual(tt["threshold"], 1.0)
+        self.assertIn("balanced_accuracy_at_0.5", tt)
+        self.assertIn("balanced_accuracy_tuned", tt)
+        # Thresholding relabels probabilities; it must not change the ranking, so
+        # AUROC is identical with and without tuning.
+        self.assertAlmostEqual(base["metrics"]["roc_auc"], tuned["metrics"]["roc_auc"])
+
     def test_bootstrap_ci_is_within_split_interval(self):
         nodes, features = self._binary_cohort()
         with tempfile.TemporaryDirectory() as td:
