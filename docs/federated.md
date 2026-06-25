@@ -15,13 +15,20 @@ pinned by the test suite. This is a research demonstrator; see
 EpiNet's nearest-centroid / contestability spine is built from **additive
 sufficient statistics**:
 
-- the global z-score scaler from per-feature `count`, `sum`, and `sum-of-squares`;
+- the global z-score scaler from per-feature `count`, `sum`, and the per-site
+  **centered** sum-of-squared-deviations `m2`;
 - the class centroids from per-class `count` and `sum` (z-scoring is affine, so a
   standardized centroid is `(raw_class_mean − global_mean) / global_sd`);
-- the Mahalanobis precision from per-site second-moment matrices `Σ xxᵀ`.
+- the Mahalanobis precision from per-site **centered** co-moment matrices
+  `Σ (x−μ)(x−μ)ᵀ`.
 
-Sums are additive, so a coordinator combines one small aggregate message per site
-and recovers **exactly** what a centralized run would compute. The RandomForest
+Sums are additive and the centered moments combine across sites by the parallel
+(Chan et al.) update, so a coordinator combines one small aggregate message per
+site and recovers **exactly** what a centralized run would compute. Centering
+each site's moments *before* they cross avoids the catastrophic cancellation of
+`Σx² ⁄ n − μ²` — without it the reconstructed standard deviation drifts by
+~1e-4 on a feature whose mean dwarfs its spread; with it the fit matches the
+centralized scaler to floating-point precision. The RandomForest
 outcome model is *not* mean-poolable (trees cannot be averaged) and is out of
 scope — the federatable part is precisely the centroid/contestability spine,
 EpiNet's differentiated lens. This is the

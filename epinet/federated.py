@@ -81,15 +81,35 @@ def site_aggregates(
         class_n[cls] = count
         class_sum[cls] = values[mask].sum(axis=0).tolist()
 
+    # Centered (mean-subtracted) moments rather than raw sum-of-squares. The site
+    # has its own records, so it can subtract its own mean before squaring, which
+    # avoids the catastrophic cancellation of ``sumsq/n - mean**2`` for features
+    # whose mean dwarfs their spread. ``m2`` (per-feature sum of squared
+    # deviations) and ``comoment`` (centered co-moment matrix) combine ACROSS
+    # sites exactly via the parallel/Chan update in ``combine_aggregates`` — still
+    # additive, still aggregate-only, no record leaves. ``sum`` is kept because
+    # the mean (and the class centroids) are well-conditioned as plain sums.
+    if n:
+        mean = values.mean(axis=0)
+        centered = values - mean
+        m2 = (centered**2).sum(axis=0)
+        comoment = centered.T @ centered
+    else:
+        d = len(columns)
+        mean = np.zeros(d)
+        m2 = np.zeros(d)
+        comoment = np.zeros((d, d))
+
     return {
         "columns": columns,
         "n": n,
         "sum": values.sum(axis=0).tolist(),
-        "sumsq": (values**2).sum(axis=0).tolist(),
-        # Uncentered second-moment matrix (sum of outer products). Additive across
-        # sites, and sufficient (with sum + n) to reconstruct the pooled
-        # covariance for the Mahalanobis metric — still an aggregate, no per-row.
-        "second_moment": (values.T @ values).tolist(),
+        "mean": mean.tolist(),
+        # Per-feature sum of squared deviations from this site's mean.
+        "m2": m2.tolist(),
+        # Centered co-moment (sum of centered outer products). With m2 + n + mean
+        # it reconstructs the pooled covariance for the Mahalanobis metric.
+        "comoment": comoment.tolist(),
         "class_n": class_n,
         "class_sum": class_sum,
         "suppressed": suppressed,
@@ -115,10 +135,37 @@ def combine_aggregates(aggregates: list[dict[str, object]]) -> dict[str, object]
     d = len(columns)
     total_n = sum(int(agg["n"]) for agg in aggregates)
     total_sum = np.sum([np.asarray(agg["sum"], dtype=float) for agg in aggregates], axis=0)
-    total_sumsq = np.sum([np.asarray(agg["sumsq"], dtype=float) for agg in aggregates], axis=0)
-
     mean = total_sum / total_n
-    var = np.clip(total_sumsq / total_n - mean**2, 0.0, None)
+
+    # Numerically stable pooled moments via the parallel (Chan et al.) update.
+    # Folding centered per-site moments never forms ``sumsq/n - mean**2``, so the
+    # reconstruction stays exact even when a feature's mean dwarfs its variance.
+    # Each merge of accumulator A with site B uses delta = mean_B - mean_A:
+    #   M2  += M2_B + delta**2          * (n_A n_B / n)
+    #   C   += C_B  + outer(delta,delta)* (n_A n_B / n)
+    run_n = 0
+    run_mean = np.zeros(d)
+    run_m2 = np.zeros(d)
+    run_c = np.zeros((d, d))
+    for agg in aggregates:
+        n_b = int(agg["n"])
+        if n_b == 0:
+            continue
+        mean_b = np.asarray(agg["mean"], dtype=float)
+        m2_b = np.asarray(agg["m2"], dtype=float)
+        c_b = np.asarray(agg["comoment"], dtype=float)
+        if run_n == 0:
+            run_n, run_mean, run_m2, run_c = n_b, mean_b, m2_b, c_b
+            continue
+        delta = mean_b - run_mean
+        combined_n = run_n + n_b
+        scale = run_n * n_b / combined_n
+        run_m2 = run_m2 + m2_b + delta**2 * scale
+        run_c = run_c + c_b + np.outer(delta, delta) * scale
+        run_mean = run_mean + delta * (n_b / combined_n)
+        run_n = combined_n
+
+    var = np.clip(run_m2 / total_n, 0.0, None)
     sd = np.sqrt(var)
 
     kept_idx = [i for i in range(d) if var[i] > VARIANCE_TOL]
@@ -146,12 +193,13 @@ def combine_aggregates(aggregates: list[dict[str, object]]) -> dict[str, object]
     ) if classes else np.empty((0, len(kept_columns)))
 
     # Pooled covariance of the standardized features, for the Mahalanobis metric.
-    # cov(X) = S/n - mean.mean^T (population); cov(Xz) divides by the sd outer
-    # product. This is the EMPIRICAL covariance — exactly federatable. Matching
-    # the production Ledoit-Wolf shrinkage exactly would additionally need
-    # 4th-moment aggregates (noted, not built); this is the unshrunk reconstruction.
-    second_moment = np.sum([np.asarray(agg["second_moment"], dtype=float) for agg in aggregates], axis=0)
-    cov_full = second_moment / total_n - np.outer(mean, mean)
+    # cov(X) = C/n from the folded centered co-moment (population); cov(Xz)
+    # divides by the sd outer product. This is the EMPIRICAL covariance — exactly
+    # federatable and, via the centered co-moment, free of the cancellation that
+    # ``second_moment/n - mean.mean^T`` suffered. Matching the production
+    # Ledoit-Wolf shrinkage exactly would additionally need 4th-moment aggregates
+    # (noted, not built); this is the unshrunk reconstruction.
+    cov_full = run_c / total_n
     cov_kept = cov_full[np.ix_(kept_idx, kept_idx)]
     cov_z = cov_kept / np.outer(sd_kept, sd_kept)
     ridge = 1e-6 * np.eye(len(kept_idx))
