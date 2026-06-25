@@ -46,6 +46,25 @@ the argmax predictions are identical; only probability quality changes.
 Calibration is skipped when the minority class is too small to cross-validate
 the calibrator honestly, and for multiclass outcomes (the Cox slope is binary).
 
+## Decision-Threshold Tuning (opt-in)
+
+A forest's default `0.5`/argmax decision rule under-calls the minority class on
+imbalanced outcomes. With `--tune-threshold`, binary predictions instead use the
+threshold that **maximizes balanced accuracy on the out-of-bag training scores**
+— each training row scored only by the trees that did not see it, so the test
+set is never used and there is no leakage. The threshold defaults to `0.5` when
+nothing beats it on the OOB scores. `model_metrics.json` then carries a
+`threshold_tuning` block with the chosen threshold and the held-out balanced
+accuracy at `0.5` vs the tuned value, so you can see whether the training-side
+choice **transported**.
+
+It is **off by default and deliberately so**: the imbalance-aware `class_weight`
+tuning above already shifts the effective boundary, so the extra gain from
+threshold tuning is usually small and, on weak-signal cohorts, may not transport
+(the bundled synthetic data is a good example — the tuned threshold can lose to
+`0.5` on the held-out split). Tuning affects label predictions only;
+probabilities and AUROC are unchanged.
+
 If the mean is near chance, the graph features carry no signal for the outcome —
 which is exactly what the bundled random synthetic data shows. Use
 `--n-iterations 1` to reproduce the old single-split behavior, or raise it for

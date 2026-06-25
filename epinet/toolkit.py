@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import warnings
 from pathlib import Path
 from typing import Iterable
 
@@ -320,6 +321,32 @@ def _probability_metrics(
     return out
 
 
+def _tune_threshold(y_bin: np.ndarray, oob_pos: np.ndarray) -> float:
+    """Binary decision threshold maximizing balanced accuracy on OOB train scores.
+
+    A forest's argmax (0.5) prediction is often suboptimal under class imbalance
+    even after class weighting: the minority class is under-called. The threshold
+    is chosen on the **out-of-bag** predicted probabilities — each training row
+    scored only by the trees that did not see it — so the test set is never
+    touched and there is no leakage. Returns 0.5 (the default) when no threshold
+    beats it on the OOB scores, or when those scores are degenerate, so tuning
+    can only help.
+    """
+    valid = ~np.isnan(oob_pos)
+    y_bin, oob_pos = y_bin[valid], oob_pos[valid]
+    if len(y_bin) == 0 or len(np.unique(y_bin)) < 2:
+        return 0.5
+    best_t = 0.5
+    best_s = balanced_accuracy_score(y_bin, (oob_pos >= 0.5).astype(int))
+    for t in np.unique(oob_pos):
+        if t <= 0.0 or t >= 1.0:
+            continue
+        score = balanced_accuracy_score(y_bin, (oob_pos >= t).astype(int))
+        if score > best_s:
+            best_s, best_t = score, float(t)
+    return best_t
+
+
 def _split_and_score(
     X: pd.DataFrame,
     y: pd.Series,
@@ -329,6 +356,7 @@ def _split_and_score(
     random_state: int,
     stratify_ok: bool,
     groups: pd.Series | None = None,
+    tune_threshold: bool = False,
 ) -> tuple[RandomForestClassifier, dict[str, object], pd.Series, pd.Series, np.ndarray]:
     train_idx, test_idx = _split_indices(
         X,
@@ -340,9 +368,34 @@ def _split_and_score(
     )
     X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
     y_train, y_test = y.iloc[train_idx], y.iloc[test_idx]
-    fitted = clone(model).set_params(random_state=random_state).fit(X_train, y_train)
-    predictions = fitted.predict(X_test)
+
+    # Decision-threshold tuning is OPT-IN (``tune_threshold``). When off, the
+    # default path is unchanged: argmax (0.5) predictions and no OOB pass. When
+    # on, fit with ``oob_score`` (a nearly-free out-of-bag estimate on the
+    # training rows) and, for binary outcomes, label at the threshold that
+    # maximizes balanced accuracy on those OOB scores rather than 0.5 — which
+    # under-calls the minority class. The test set is never used to pick the
+    # threshold, so there is no leakage. Probabilities/AUROC are unchanged.
+    extra = {"oob_score": True} if tune_threshold else {}
+    with warnings.catch_warnings():
+        # OOB coverage can be partial on small/imbalanced folds; the threshold
+        # tuner already masks rows without an OOB score, so silence the notice.
+        warnings.filterwarnings("ignore", message="Some inputs do not have OOB scores")
+        fitted = clone(model).set_params(random_state=random_state, **extra).fit(X_train, y_train)
     proba = fitted.predict_proba(X_test)
+    classes_ = fitted.classes_
+
+    threshold = 0.5
+    if tune_threshold and len(classes_) == 2:
+        neg_label, pos_label = classes_[0], classes_[1]
+        oob = getattr(fitted, "oob_decision_function_", None)
+        if oob is not None and oob.ndim == 2 and oob.shape[1] == 2:
+            y_bin = (np.asarray(y_train) == pos_label).astype(int)
+            threshold = _tune_threshold(y_bin, oob[:, 1])
+        predictions = np.where(proba[:, 1] >= threshold, pos_label, neg_label)
+    else:
+        predictions = fitted.predict(X_test)
+
     precision, recall, f1, _ = precision_recall_fscore_support(
         y_test,
         predictions,
@@ -358,6 +411,7 @@ def _split_and_score(
         "precision_weighted": float(precision),
         "recall_weighted": float(recall),
         "f1_weighted": float(f1),
+        "decision_threshold": float(threshold),
         "train_rows": int(len(X_train)),
         "test_rows": int(len(X_test)),
     }
@@ -531,6 +585,7 @@ def train_outcome_model(
     groups: pd.Series | None = None,
     n_permutations: int = 0,
     n_bootstrap: int = 1000,
+    tune_threshold: bool = False,
     provenance: dict[str, object] | None = None,
 ) -> dict[str, object]:
     """Fit and evaluate the outcome model, optionally over repeated splits.
@@ -685,6 +740,7 @@ def train_outcome_model(
             random_state=random_state + i,
             stratify_ok=stratify_ok,
             groups=groups,
+            tune_threshold=tune_threshold,
         )
         row["iteration"] = i
         iteration_rows.append(row)
@@ -746,6 +802,35 @@ def train_outcome_model(
         metrics["n_groups"] = int(groups.nunique())
     if split_note:
         metrics["split_note"] = split_note
+
+    # Decision-threshold report (binary, opt-in). Predictions already use the
+    # OOB-tuned threshold; surface it and the balanced accuracy at 0.5 vs the
+    # tuned threshold on the held-out primary split so the choice — and whether
+    # it transported — is auditable. Computed before any probability
+    # recalibration below, so the 0.5 baseline uses the same raw scores the
+    # threshold was applied to.
+    if tune_threshold and is_binary and primary_proba is not None:
+        primary_threshold = float(iteration_metrics["decision_threshold"].iloc[0])
+        pos = classes[1]
+        y_bin_primary = (np.asarray(primary_truth) == pos).astype(int)
+        ba_default = float(
+            balanced_accuracy_score(y_bin_primary, (primary_proba[:, 1] >= 0.5).astype(int))
+        )
+        ba_tuned = float(balanced_accuracy_score(primary_truth, primary_predictions))
+        metrics["threshold_tuning"] = {
+            "threshold": primary_threshold,
+            "rule": "maximize balanced accuracy on out-of-bag training scores",
+            "balanced_accuracy_at_0.5": ba_default,
+            "balanced_accuracy_tuned": ba_tuned,
+            "note": (
+                "Opt-in. Threshold selected on OOB training scores only (no test "
+                "leakage); it maximizes balanced accuracy on the training fold, but "
+                "transport is not guaranteed — compare the 0.5 vs tuned held-out "
+                "values here. Most useful for imbalanced outcomes; the gain over a "
+                "class-weighted forest is typically small. Predictions only; "
+                "probabilities and AUROC are unchanged."
+            ),
+        }
 
     if n_iterations > 1:
         metrics["iteration_summary"] = {
@@ -915,6 +1000,7 @@ def train_outcome_model(
                     _, row, _, _, _ = _split_and_score(
                         X, y_permuted, tuned_model, test_size=test_size,
                         random_state=random_state + j, stratify_ok=stratify_ok, groups=groups,
+                        tune_threshold=tune_threshold,
                     )
                 except ValueError:
                     # A grouped (community) shuffle can leave an outcome class
@@ -1303,6 +1389,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             groups=groups,
             n_permutations=getattr(args, "permutation_test", 0),
             n_bootstrap=getattr(args, "n_bootstrap", 1000),
+            tune_threshold=getattr(args, "tune_threshold", False),
             provenance=prov,
         )
         summary["model"] = model_result["metrics"]
@@ -1536,6 +1623,17 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Percentile-bootstrap resamples of the held-out test set for a "
             "within-split 95%% confidence interval on the primary metrics; 0 disables"
+        ),
+    )
+    parser.add_argument(
+        "--tune-threshold",
+        action="store_true",
+        help=(
+            "Binary outcomes only: pick the decision threshold that maximizes "
+            "balanced accuracy on out-of-bag training scores instead of the "
+            "default 0.5 (no test leakage). Reports 0.5 vs tuned held-out "
+            "balanced accuracy. Off by default; most useful for imbalanced "
+            "outcomes, and the gain over the class-weighted forest is usually small"
         ),
     )
     parser.add_argument("--test-size", type=float, default=0.2)
