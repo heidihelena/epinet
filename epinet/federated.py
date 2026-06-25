@@ -116,14 +116,29 @@ def site_aggregates(
     }
 
 
-def combine_aggregates(aggregates: list[dict[str, object]]) -> dict[str, object]:
+def combine_aggregates(
+    aggregates: list[dict[str, object]],
+    *,
+    shrinkage: float = 0.0,
+) -> dict[str, object]:
     """Combine per-site aggregate messages into the shared scaler + centroids.
 
     Returns the global mean/sd over the retained (non-constant) feature columns
     and the standardized class centroids, in the same column order and class
     order (sorted by label) that a centralized ``standardize`` +
     ``class_centroids`` would produce.
+
+    ``shrinkage`` (0–1) optionally regularizes the standardized covariance used
+    for the Mahalanobis precision, shrinking it toward the identity:
+    ``(1 - shrinkage) * cov + shrinkage * I``. Because the features are
+    standardized the covariance has unit diagonal, so the identity is its natural
+    Ledoit-Wolf target — and the shrink is computed from the already-shipped
+    centered co-moment, needing no extra aggregate and no record access. It
+    conditions ``inv_cov`` when features are collinear or a site is small. The
+    default ``0.0`` reproduces the exact empirical reconstruction.
     """
+    if not 0.0 <= shrinkage <= 1.0:
+        raise ValueError(f"shrinkage must be in [0, 1], got {shrinkage}")
     if not aggregates:
         raise ValueError("need at least one site aggregate")
     aggregates = _unwrap(aggregates)
@@ -196,14 +211,19 @@ def combine_aggregates(aggregates: list[dict[str, object]]) -> dict[str, object]
     # cov(X) = C/n from the folded centered co-moment (population); cov(Xz)
     # divides by the sd outer product. This is the EMPIRICAL covariance — exactly
     # federatable and, via the centered co-moment, free of the cancellation that
-    # ``second_moment/n - mean.mean^T`` suffered. Matching the production
-    # Ledoit-Wolf shrinkage exactly would additionally need 4th-moment aggregates
-    # (noted, not built); this is the unshrunk reconstruction.
+    # ``second_moment/n - mean.mean^T`` suffered. ``shrinkage`` below applies a
+    # specified-intensity shrink toward the identity; matching production
+    # Ledoit-Wolf's DATA-DRIVEN intensity exactly would additionally need
+    # 4th-moment aggregates (noted, not built).
     cov_full = run_c / total_n
     cov_kept = cov_full[np.ix_(kept_idx, kept_idx)]
     cov_z = cov_kept / np.outer(sd_kept, sd_kept)
-    ridge = 1e-6 * np.eye(len(kept_idx))
-    inv_cov = np.linalg.pinv(cov_z + ridge)
+    # Optional shrinkage toward the identity (the standardized covariance has unit
+    # diagonal, so I is its natural target). lambda=0 leaves cov_z untouched.
+    eye = np.eye(len(kept_idx))
+    cov_reg = (1.0 - shrinkage) * cov_z + shrinkage * eye
+    ridge = 1e-6 * eye
+    inv_cov = np.linalg.pinv(cov_reg + ridge)
 
     return {
         "n_total": total_n,
@@ -215,6 +235,7 @@ def combine_aggregates(aggregates: list[dict[str, object]]) -> dict[str, object]
         "centroids": centroids,
         "cov_standardized": cov_z,
         "inv_cov": inv_cov,
+        "shrinkage": float(shrinkage),
     }
 
 
@@ -237,13 +258,16 @@ def simulate(
     site_labels: list[object] | pd.Series | np.ndarray,
     *,
     min_cell: int = 0,
+    shrinkage: float = 0.0,
 ) -> dict[str, object]:
     """Partition rows across sites, federate the fit, and compare to centralized.
 
     ``site_labels`` assigns each row of ``X`` to a site. Only per-site aggregate
     messages cross; the function returns both fits and the maximum absolute
     difference in mean, sd, and centroids — which should be at floating-point
-    level if the aggregation composes.
+    level if the aggregation composes. ``shrinkage`` is passed to
+    ``combine_aggregates`` (it conditions ``inv_cov`` only; mean/sd/centroids,
+    and thus the comparison below, are unaffected).
     """
     site_labels = pd.Series(np.asarray(site_labels), index=X.index)
     aggregates = []
@@ -254,7 +278,7 @@ def simulate(
         aggregates.append(agg)
         site_summary[str(site)] = {"n": agg["n"], "classes": agg["class_n"]}
 
-    fed = combine_aggregates(aggregates)
+    fed = combine_aggregates(aggregates, shrinkage=shrinkage)
     central = centralized_fit(X, y)
 
     # Align on the shared kept columns + classes, then compare element-wise.

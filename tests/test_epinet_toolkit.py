@@ -1222,6 +1222,36 @@ class FederatedFitTests(unittest.TestCase):
         self.assertLess(res["max_mean_diff"], 1e-6)
         self.assertLess(res["max_centroid_diff"], 1e-9)
 
+    def test_covariance_shrinkage_conditions_inverse_and_is_opt_in(self):
+        # Near-collinear features make the standardized covariance ill-conditioned,
+        # so the Mahalanobis precision (inv_cov) blows up. Opt-in shrinkage toward
+        # the identity tames it; the default (0.0) leaves the empirical cov intact.
+        rng = np.random.default_rng(1)
+        n = 200
+        a = rng.normal(0.0, 1.0, n)
+        X = pd.DataFrame({
+            "a": a,
+            "b": a + rng.normal(0.0, 1e-3, n),   # ~collinear with a
+            "c": rng.normal(0.0, 1.0, n),
+        }, index=[f"n{i}" for i in range(n)])
+        y = pd.Series((rng.random(n) < 0.5).astype(int), index=X.index, name="Outcome")
+        aggs = [efed.site_aggregates(X.iloc[i::4], y.iloc[i::4]) for i in range(4)]
+
+        plain = efed.combine_aggregates(aggs)
+        shrunk = efed.combine_aggregates(aggs, shrinkage=0.1)
+
+        self.assertEqual(plain["shrinkage"], 0.0)
+        self.assertEqual(shrunk["shrinkage"], 0.1)
+        # Shrinkage strictly improves conditioning of the precision matrix.
+        self.assertLess(
+            np.linalg.cond(shrunk["inv_cov"]), np.linalg.cond(plain["inv_cov"])
+        )
+        # The reported empirical covariance is unchanged — shrinkage only feeds inv_cov.
+        np.testing.assert_allclose(plain["cov_standardized"], shrunk["cov_standardized"])
+        # Out-of-range intensity is rejected.
+        with self.assertRaises(ValueError):
+            efed.combine_aggregates(aggs, shrinkage=1.5)
+
     def test_small_cell_suppression_drops_rare_class(self):
         X = pd.DataFrame(
             {"f1": [0.0, 1, 2, 3, 4, 5], "f2": [1.0, 1, 0, 0, 1, 2]},
