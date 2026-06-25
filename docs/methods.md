@@ -25,6 +25,11 @@ epidemiology the model would otherwise collapse toward the majority. On
 balanced data the search simply selects `class_weight=None`, leaving behaviour
 unchanged.
 
+The grid also tunes `min_samples_leaf` (`1`, `3`) to regularize the forest on
+the small, noisy cohorts this toolkit targets. Because it is selected by the
+same cross-validation, a larger leaf is chosen only when it improves held-out
+balanced accuracy, so it never degrades the selected model.
+
 If the mean is near chance, the graph features carry no signal for the outcome —
 which is exactly what the bundled random synthetic data shows. Use
 `--n-iterations 1` to reproduce the old single-split behavior, or raise it for
