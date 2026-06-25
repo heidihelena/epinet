@@ -1252,6 +1252,32 @@ class FederatedFitTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             efed.combine_aggregates(aggs, shrinkage=1.5)
 
+    def test_non_finite_features_are_rejected_with_named_columns(self):
+        # A NaN/inf would silently poison sum/m2/comoment and corrupt the fit, so
+        # site_aggregates must refuse it and name the offending column(s).
+        X = pd.DataFrame(
+            {"good": [1.0, 2.0, 3.0], "bad": [0.0, np.nan, 1.0]},
+            index=["a", "b", "c"],
+        )
+        y = pd.Series(["x", "y", "x"], index=X.index, name="Outcome")
+        with self.assertRaises(ValueError) as ctx:
+            efed.site_aggregates(X, y)
+        self.assertIn("bad", str(ctx.exception))
+        self.assertNotIn("good", str(ctx.exception))
+        # An inf is caught the same way.
+        X.loc["b", "bad"] = np.inf
+        with self.assertRaises(ValueError):
+            efed.site_aggregates(X, y)
+
+    def test_combine_rejects_all_empty_aggregates(self):
+        # Empty sites must raise rather than divide by zero into NaN stats.
+        empty = pd.DataFrame({"f": []}, dtype=float)
+        ey = pd.Series([], dtype="object", name="Outcome")
+        agg = efed.site_aggregates(empty, ey)
+        self.assertEqual(agg["n"], 0)
+        with self.assertRaises(ValueError):
+            efed.combine_aggregates([agg])
+
     def test_small_cell_suppression_drops_rare_class(self):
         X = pd.DataFrame(
             {"f1": [0.0, 1, 2, 3, 4, 5], "f2": [1.0, 1, 0, 0, 1, 2]},

@@ -66,6 +66,15 @@ def site_aggregates(
     values = X.to_numpy(dtype=float)
     n = int(values.shape[0])
 
+    # Feature-contract guard: a single non-finite value silently poisons the
+    # additive statistics — one NaN/inf propagates through sum/mean/m2/comoment
+    # and corrupts the whole federated fit (and every other site's view of it).
+    # Reject it at the site with a clear, column-named error rather than shipping
+    # a broken aggregate that fails far away in the coordinator.
+    if n and not np.isfinite(values).all():
+        bad = [columns[j] for j in range(values.shape[1]) if not np.isfinite(values[:, j]).all()]
+        raise ValueError(f"feature columns contain non-finite values (NaN/inf): {bad}")
+
     labeled = epinet_common.labeled_mask(y.reindex(X.index))
     y_labeled = y.reindex(X.index)
 
@@ -149,6 +158,8 @@ def combine_aggregates(
 
     d = len(columns)
     total_n = sum(int(agg["n"]) for agg in aggregates)
+    if total_n == 0:
+        raise ValueError("all site aggregates are empty (total n = 0); nothing to combine")
     total_sum = np.sum([np.asarray(agg["sum"], dtype=float) for agg in aggregates], axis=0)
     mean = total_sum / total_n
 
