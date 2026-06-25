@@ -975,6 +975,29 @@ class ScientificStandardsTests(unittest.TestCase):
             self.assertIsNotNone(result["calibration"])
             self.assertEqual(len(result["calibration"]["proba_pos"]), m["test_rows"])
 
+    def test_probability_calibration_is_reported_and_safe(self):
+        # Binary outcomes get a Platt-scaling recalibration block. Calibrated
+        # probabilities are ADOPTED only when they do not worsen held-out Brier,
+        # and the reported calibration Brier must reflect that decision.
+        nodes, features = self._binary_cohort()
+        with tempfile.TemporaryDirectory() as td:
+            result = et.train_outcome_model(
+                nodes, features, id_column="ID", outcome_column="Outcome",
+                output_dir=Path(td), n_iterations=1, n_bootstrap=0,
+            )
+            cal = result["metrics"]["calibration"]
+            self.assertIn("recalibration", cal)
+            rc = cal["recalibration"]
+            self.assertEqual(rc["method"], "sigmoid")
+            self.assertIn(rc["adopted"], (True, False))
+            # The adoption gate: calibration is taken only when Brier does not
+            # increase, and the headline Brier matches the adopted probabilities.
+            if rc["adopted"]:
+                self.assertLessEqual(rc["brier_calibrated"], rc["brier_raw"])
+                self.assertAlmostEqual(cal["brier"], rc["brier_calibrated"])
+            else:
+                self.assertAlmostEqual(cal["brier"], rc["brier_raw"])
+
     def test_bootstrap_ci_is_within_split_interval(self):
         nodes, features = self._binary_cohort()
         with tempfile.TemporaryDirectory() as td:

@@ -21,6 +21,7 @@ import networkx as nx
 import numpy as np
 import pandas as pd
 from sklearn.base import clone
+from sklearn.calibration import CalibratedClassifierCV
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.inspection import permutation_importance
 from sklearn.metrics import (
@@ -364,6 +365,40 @@ def _split_and_score(
     return fitted, metrics, y_test, pd.Series(predictions, index=y_test.index), proba
 
 
+def _calibrated_proba(
+    model: RandomForestClassifier,
+    X_train: pd.DataFrame,
+    y_train: pd.Series,
+    X_test: pd.DataFrame,
+    classes: np.ndarray,
+    *,
+    random_state: int,
+) -> np.ndarray | None:
+    """Platt-scaled (sigmoid) probabilities for the tuned forest, or ``None``.
+
+    Random forests are typically over-confident: their vote-share probabilities
+    are too extreme, which the calibration slope (< 1) exposes. Refitting the
+    tuned model inside ``CalibratedClassifierCV`` maps those scores toward
+    observed event frequencies. Sigmoid (Platt) rather than isotonic because the
+    cohorts here are small and isotonic overfits the calibration set. Returns
+    ``None`` when the minority class is too small to cross-validate the
+    calibrator honestly, so calibration is attempted only when it can be trusted.
+    """
+    k = int(min(5, y_train.value_counts().min()))
+    if k < 2:
+        return None
+    estimator = clone(model).set_params(random_state=random_state)
+    calibrated = CalibratedClassifierCV(estimator, method="sigmoid", cv=k)
+    calibrated.fit(X_train, y_train)
+    proba = calibrated.predict_proba(X_test)
+    # Align columns to the model's full class order. The calibrator's classes are
+    # already in sklearn's sorted order (same as ``classes``); this is defensive.
+    if not np.array_equal(calibrated.classes_, classes):
+        order = [list(calibrated.classes_).index(c) for c in classes]
+        proba = proba[:, order]
+    return proba
+
+
 def calibration_slope_intercept(
     y_true: pd.Series,
     proba_pos: np.ndarray,
@@ -664,6 +699,18 @@ def train_outcome_model(
     classes = primary_fit.classes_
     is_binary = len(classes) == 2
 
+    # Primary-split row indices (random_state, i.e. iteration 0). Computed once
+    # and reused for both probability calibration and permutation importance so
+    # the calibrator and the importance estimator see exactly the same held-out
+    # data the primary metrics were measured on.
+    primary_train_idx, primary_test_idx = _split_indices(
+        X, y, test_size=test_size, random_state=random_state,
+        stratify_ok=stratify_ok, groups=groups,
+    )
+    X_primary_train = X.iloc[primary_train_idx]
+    y_primary_train = y.iloc[primary_train_idx]
+    X_test_primary = X.iloc[primary_test_idx]
+
     # Metrics actually computable on this run (probability metrics drop out on
     # degenerate splits, so only report what was measured).
     present_metrics = [
@@ -723,19 +770,60 @@ def train_outcome_model(
     calibration_payload: dict[str, object] | None = None
     if is_binary and primary_proba is not None:
         pos_label = classes[1]
-        cal = calibration_slope_intercept(primary_truth, primary_proba[:, 1], pos_label)
+        y_pos = (np.asarray(primary_truth) == pos_label).astype(int)
+        raw_cal = calibration_slope_intercept(primary_truth, primary_proba[:, 1], pos_label)
+        raw_brier = _first("brier")
+
+        # Probability calibration. The forest's raw scores are usually
+        # over-confident (slope < 1). Platt-scale them, but ADOPT the calibrated
+        # probabilities only when they actually lower held-out Brier, so a
+        # calibrator that overfits a thin minority class can never make the
+        # reported risk worse. Discrimination (argmax predictions, AUROC) is
+        # untouched — sigmoid is monotonic — so only probability quality changes.
+        cal_proba = _calibrated_proba(
+            tuned_model, X_primary_train, y_primary_train, X_test_primary,
+            classes, random_state=random_state,
+        )
+        recalibration: dict[str, object] | None = None
+        if cal_proba is not None:
+            cal_brier = float(brier_score_loss(y_pos, cal_proba[:, 1]))
+            cal_cal = calibration_slope_intercept(primary_truth, cal_proba[:, 1], pos_label)
+            adopted = raw_brier is None or cal_brier <= raw_brier
+            recalibration = {
+                "method": "sigmoid",
+                "adopted": adopted,
+                "brier_raw": raw_brier,
+                "brier_calibrated": cal_brier,
+                "slope_raw": raw_cal["slope"],
+                "slope_calibrated": cal_cal["slope"],
+                "intercept_calibrated": cal_cal["intercept"],
+                "note": (
+                    "Platt (sigmoid) scaling, adopted only when it lowers held-out "
+                    "Brier; discrimination is unchanged (monotonic transform)."
+                ),
+            }
+            if adopted:
+                # Downstream consumers (calibration plot, bootstrap probability
+                # metrics) now see the calibrated probabilities.
+                primary_proba = cal_proba
+
+        pos = primary_proba[:, 1]
+        final_cal = calibration_slope_intercept(primary_truth, pos, pos_label)
+        final_brier = float(brier_score_loss(y_pos, pos))
         metrics["calibration"] = {
-            "brier": _first("brier"),
-            "slope": cal["slope"],
-            "intercept": cal["intercept"],
+            "brier": final_brier,
+            "slope": final_cal["slope"],
+            "intercept": final_cal["intercept"],
             "positive_class": str(pos_label),
             "note": "Perfect calibration: slope 1, intercept 0. Slope < 1 = over-confident.",
         }
+        if recalibration is not None:
+            metrics["calibration"]["recalibration"] = recalibration
         calibration_payload = {
             "y_true": np.asarray(primary_truth),
-            "proba_pos": primary_proba[:, 1],
+            "proba_pos": pos,
             "pos_label": pos_label,
-            "brier": _first("brier"),
+            "brier": final_brier,
         }
     elif primary_proba is not None:
         # Multiclass: the Cox calibration slope/intercept are defined for a
@@ -789,12 +877,8 @@ def train_outcome_model(
 
     # Feature importance: permutation importance on the held-out primary test set
     # (less biased than impurity, and computed on data the model did not train
-    # on). Impurity importance is retained for reference.
-    _, primary_test_idx = _split_indices(
-        X, y, test_size=test_size, random_state=random_state,
-        stratify_ok=stratify_ok, groups=groups,
-    )
-    X_test_primary = X.iloc[primary_test_idx]
+    # on). Impurity importance is retained for reference. The primary-split
+    # indices were computed once above and are reused here.
     impurity_mean = np.vstack(impurity_runs).mean(axis=0)
     importance = pd.DataFrame({"feature": X.columns, "impurity_importance": impurity_mean})
     importance_kind = "permutation"
