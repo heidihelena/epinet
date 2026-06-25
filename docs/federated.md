@@ -85,9 +85,14 @@ Demo: `examples/registry_adapter_demo.py`.
 
 ## Honest limits
 
-- Reconstruction is exact for the **empirical** covariance; matching
-  production's Ledoit–Wolf shrinkage exactly would need 4th-moment aggregates
-  (noted, not built).
+- Reconstruction is exact for the **empirical** covariance. `combine_aggregates`
+  also accepts an opt-in `shrinkage` (0–1) that shrinks the standardized
+  covariance toward the identity — `(1−λ)·cov + λ·I` — to condition the
+  Mahalanobis precision when features are collinear or a site is small; it is
+  computed from the already-shipped centered co-moment (no extra aggregate, no
+  records). Matching production's *data-driven* Ledoit–Wolf intensity exactly
+  would still need 4th-moment aggregates (noted, not built); the default `λ=0`
+  reproduces the exact empirical reconstruction.
 - The federation assumes a **shared feature contract**; whether a graph feature
   is *comparable* across differently-structured sites is a modelling question,
   not a math one.
