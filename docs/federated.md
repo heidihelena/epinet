@@ -47,11 +47,13 @@ Demo: `examples/federated_two_site_demo.py`.
 **2. Federated contestability** (`site_contestability` → `combine_contestability`).
 Given the pooled fit, each site computes flip-distance **locally** against the
 global centroids; the per-node scores match a centralized run exactly. Only a
-de-identified summary crosses (flip-distance count/sum/sumsq/min/max + a
-shared-bin histogram, runner-up class counts, a per-feature value-of-information
-sum, and nearest-centroid agreement). The contested-threshold is the one
-approximate piece (a histogram quantile; the contested *count* is `q·N` by
-definition). Demo: `examples/federated_contestability_demo.py`.
+de-identified summary crosses (flip-distance count/sum/sumsq + a shared-bin
+histogram, runner-up class counts, a per-feature value-of-information sum, and
+nearest-centroid agreement). The contested-threshold is the one approximate
+piece (a histogram quantile; the contested *count* is `q·N` by definition).
+Exact extremes (`flip_min`/`flip_max`) are each one patient's own score, so the
+egress gate **withholds** them — the histogram still conveys the tails. Demo:
+`examples/federated_contestability_demo.py`.
 
 ## Mandatory, disclosed egress
 
