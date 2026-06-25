@@ -30,6 +30,22 @@ the small, noisy cohorts this toolkit targets. Because it is selected by the
 same cross-validation, a larger leaf is chosen only when it improves held-out
 balanced accuracy, so it never degrades the selected model.
 
+## Probability Calibration
+
+Random forests are typically **over-confident** — their vote-share
+probabilities are too extreme, which the calibration slope (`< 1`) exposes. For
+binary outcomes the tuned forest is refit inside a `CalibratedClassifierCV`
+(**Platt / sigmoid** scaling — isotonic overfits the small calibration sets
+here) to map raw scores toward observed event frequencies. The calibrated
+probabilities are **adopted only when they lower the held-out Brier score**, so
+a calibrator that overfits a thin minority class can never make the reported
+risk worse; otherwise the raw scores are kept. Either way `calibration` reports
+a `recalibration` block with the raw and calibrated Brier/slope so the decision
+is auditable. Discrimination is unchanged — sigmoid is monotonic, so AUROC and
+the argmax predictions are identical; only probability quality changes.
+Calibration is skipped when the minority class is too small to cross-validate
+the calibrator honestly, and for multiclass outcomes (the Cox slope is binary).
+
 If the mean is near chance, the graph features carry no signal for the outcome —
 which is exactly what the bundled random synthetic data shows. Use
 `--n-iterations 1` to reproduce the old single-split behavior, or raise it for
