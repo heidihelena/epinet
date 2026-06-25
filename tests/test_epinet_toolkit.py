@@ -1365,6 +1365,17 @@ class FederatedContestabilityTests(unittest.TestCase):
         self.assertEqual(next(iter(fed["feature_voi"])), next(iter(central["feature_leverage"])))
         self.assertEqual(fed["flip_distance"]["approx_n_contested"], central["flip_distance"]["n_contested"])
 
+    def test_simulate_contestability_matches_centralized(self):
+        # The stage-2 analogue of simulate(): one call partitions, federates the
+        # contestability summary, and compares to a centralized run.
+        X, y, sites = self._design()
+        res = efed.simulate_contestability(X, y, sites, contest_quantile=0.1)
+        self.assertEqual(set(res["sites"]), {"A", "B"})
+        self.assertLess(res["max_mean_diff"], 1e-9)
+        self.assertLess(res["max_std_diff"], 1e-6)
+        self.assertTrue(res["runner_up_match"])
+        self.assertTrue(res["top_voi_match"])
+
     def test_site_summary_is_aggregate_only(self):
         X, y, _ = self._design()
         fit = self._fit(X, y, pd.Series("A", index=X.index))

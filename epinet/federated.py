@@ -494,6 +494,69 @@ def combine_contestability(
     }
 
 
+def simulate_contestability(
+    X: pd.DataFrame,
+    y: pd.Series,
+    site_labels: list[object] | pd.Series | np.ndarray,
+    *,
+    metric: str = "euclidean",
+    contest_quantile: float = 0.1,
+    min_cell: int = 0,
+    bin_edges: np.ndarray = DEFAULT_FLIP_BINS,
+) -> dict[str, object]:
+    """Federate the contestability summary and compare to centralized — the
+    stage-2 analogue of ``simulate``.
+
+    Builds the pooled fit from per-site aggregates, has each site summarize its
+    flip-distances against that shared fit (only aggregate messages cross), pools
+    the summaries, and checks the federated flip-distance mean/std, runner-up
+    counts, and top value-of-information feature against ``contest.contestability``
+    on the pooled data. The mean/std diffs should be at floating-point level if
+    the contestability layer composes; the contested-threshold value is the one
+    histogram-approximate piece and is not asserted here.
+    """
+    site_labels = pd.Series(np.asarray(site_labels), index=X.index)
+    ordered_sites = sorted(site_labels.unique(), key=str)
+
+    aggregates = [
+        site_aggregates(X.loc[site_labels == s], y.loc[site_labels == s], min_cell=min_cell)
+        for s in ordered_sites
+    ]
+    fit = combine_aggregates(aggregates)
+
+    summaries = []
+    site_summary = {}
+    for s in ordered_sites:
+        rows = site_labels == s
+        summary = site_contestability(
+            X.loc[rows], y.loc[rows], fit, metric=metric, bin_edges=bin_edges
+        )
+        summaries.append(summary)
+        site_summary[str(s)] = {"n": summary["n"], "flip_count": summary["flip_count"]}
+
+    fed = combine_contestability(summaries, contest_quantile=contest_quantile, bin_edges=bin_edges)
+    central = epinet_contest.contestability(
+        X, y=y, metric=metric, contest_quantile=contest_quantile
+    )["summary"]
+
+    fed_fd, cen_fd = fed["flip_distance"], central["flip_distance"]
+    def _abs_diff(a, b):
+        return float(abs(a - b)) if a is not None and b is not None else None
+
+    return {
+        "sites": site_summary,
+        "metric": metric,
+        "federated": fed,
+        "centralized": central,
+        "max_mean_diff": _abs_diff(fed_fd["mean"], cen_fd["mean"]),
+        "max_std_diff": _abs_diff(fed_fd["std"], cen_fd["std"]),
+        "runner_up_match": fed["runner_up_counts"]
+        == {str(k): int(v) for k, v in central["runner_up_counts"].items()},
+        "top_voi_match": next(iter(fed["feature_voi"]), None)
+        == next(iter(central["feature_leverage"]), None),
+    }
+
+
 # --- Mandatory egress gate -------------------------------------------------
 # The functions above compute aggregates *within* a site's trust boundary (and
 # are reused for the in-boundary two-site simulation and local scoring). The
