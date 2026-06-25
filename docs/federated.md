@@ -53,7 +53,10 @@ nearest-centroid agreement). The contested-threshold is the one approximate
 piece (a histogram quantile; the contested *count* is `q·N` by definition).
 Exact extremes (`flip_min`/`flip_max`) are each one patient's own score, so the
 egress gate **withholds** them — the histogram still conveys the tails. Demo:
-`examples/federated_contestability_demo.py`.
+`examples/federated_contestability_demo.py`. `simulate_contestability(X, y,
+site_labels)` is the one-call round-trip check (the stage-2 analogue of
+`simulate`): it partitions, federates the summary, and reports the
+flip-distance mean/std diff against a centralized run.
 
 ## Mandatory, disclosed egress
 
