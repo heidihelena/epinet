@@ -1,0 +1,45 @@
+name: R-CMD-check
+
+on:
+  push:
+    paths:
+      - 'r/epinetR/**'
+      - 'epinet/**'
+      - '.github/workflows/r-cmd-check.yml'
+  pull_request:
+    paths:
+      - 'r/epinetR/**'
+      - 'epinet/**'
+      - '.github/workflows/r-cmd-check.yml'
+
+jobs:
+  R-CMD-check:
+    runs-on: ubuntu-latest
+    env:
+      R_KEEP_PKG_SOURCE: yes
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install the Python epinet package
+        run: pip install -e .
+
+      - name: Point reticulate at this Python
+        run: echo "RETICULATE_PYTHON=$(which python)" >> "$GITHUB_ENV"
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          extra-packages: any::rcmdcheck
+          working-directory: r/epinetR
+
+      - uses: r-lib/actions/check-r-package@v2
+        with:
+          working-directory: r/epinetR
+          upload-snapshots: true

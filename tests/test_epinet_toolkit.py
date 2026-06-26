@@ -1946,5 +1946,44 @@ if _HAS_HYPOTHESIS:
             )
 
 
+class RApiAdapterTests(unittest.TestCase):
+    """The tabular adapter the epinetR package wraps: flat table in, honest
+    outcome-model summary out, one-hot encoding categoricals."""
+
+    def _table(self, n=160, seed=0):
+        rng = np.random.default_rng(seed)
+        age = rng.normal(60, 10, n)
+        sex = rng.choice(["M", "F"], n)
+        smoking = rng.choice(["never", "former", "current"], n)
+        logit = 0.04 * (age - 60) + 0.9 * (smoking == "current") + 0.3 * (sex == "M") - 0.5
+        copd = (rng.random(n) < 1 / (1 + np.exp(-logit))).astype(int)
+        return pd.DataFrame({"age": age, "sex": sex, "smoking": smoking, "copd": copd})
+
+    def test_fit_returns_clean_summary_and_encodes_categoricals(self):
+        from epinet import r_api
+        data = self._table()
+        res = r_api.fit(data, outcome="copd", predictors=["age", "sex", "smoking"],
+                        n_iterations=1, n_bootstrap=0)
+        self.assertEqual(res["outcome"], "copd")
+        self.assertEqual(res["n"], len(data))
+        # Categorical predictors are one-hot encoded into the design matrix.
+        self.assertIn("smoking_current", res["features_used"])
+        self.assertIn("age", res["features_used"])
+        # The honest-evaluation summary comes through intact.
+        for key in ("balanced_accuracy", "mcc", "calibration", "best_params"):
+            self.assertIn(key, res["metrics"])
+        self.assertTrue(res["importance"])  # non-empty per-feature records
+        # Result must be JSON-serializable (it crosses the language boundary).
+        json.dumps(res)
+
+    def test_fit_validates_columns_and_outcome(self):
+        from epinet import r_api
+        data = self._table()
+        with self.assertRaises(ValueError):
+            r_api.fit(data, outcome="missing")
+        with self.assertRaises(ValueError):
+            r_api.fit(data, outcome="copd", predictors=["age", "nope"])
+
+
 if __name__ == "__main__":
     unittest.main()

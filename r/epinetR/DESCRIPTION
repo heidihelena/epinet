@@ -1,0 +1,22 @@
+Package: epinetR
+Title: R Interface to the EpiNet Toolkit
+Version: 0.1.0
+Authors@R:
+    person("Heidi Helena", "Andersen", , "andersenheidihelena@gmail.com",
+           role = c("aut", "cre"))
+Description: An R interface to EpiNet, a transparent toolkit for honestly
+    evaluated outcome models on tabular and graph-shaped data. It wraps the
+    tested Python 'epinet' package through 'reticulate', so the algorithms are
+    single-sourced and cannot diverge across languages, and returns calibrated,
+    caveated results: discrimination, calibration, bootstrap intervals, a
+    label-permutation null, and feature importance. A research and education
+    demonstrator, not clinical decision support.
+License: MIT + file LICENSE
+Encoding: UTF-8
+SystemRequirements: Python (>= 3.10) with the 'epinet' package
+Imports:
+    reticulate
+Suggests:
+    testthat (>= 3.0.0)
+Config/testthat/edition: 3
+RoxygenNote: 7.3.1
