@@ -59,3 +59,18 @@ percentile bootstrap interval, an optional label-permutation null
 
 The returned object is a plain list (class `"epinet"`) with `metrics`,
 `importance`, `features_used`, and more — easy to pull into your own reports.
+
+## More surfaces
+
+```r
+# Contestability lens: per-row flip-distance + value-of-information
+cst <- epinet_contestability(data, outcome = "copd",
+                             predictors = c("age", "sex", "smoking"))
+plot(cst)   # flip-distance distribution (contested tail shaded) + VOI bars
+
+# Graph pipeline: build the network, derive graph features, fit the model
+g <- epinet_graph(nodes, edges, outcome = "Outcome")
+plot(g)     # network coloured by outcome, sized by degree (needs 'igraph')
+```
+
+Each surface has `print()`, `summary()`, and a native-R `plot()`.
