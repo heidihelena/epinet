@@ -71,6 +71,11 @@ plot(cst)   # flip-distance distribution (contested tail shaded) + VOI bars
 # Graph pipeline: build the network, derive graph features, fit the model
 g <- epinet_graph(nodes, edges, outcome = "Outcome")
 plot(g)     # network coloured by outcome, sized by degree (needs 'igraph')
+
+# Federated fit: reconstruct from per-site aggregates only (rows never leave)
+fed <- epinet_federated(data, outcome = "copd",
+                        predictors = c("age", "sex", "smoking"), n_sites = 3)
+plot(fed)   # per-site sizes + reconstruction error vs centralized (~0 = exact)
 ```
 
 Each surface has `print()`, `summary()`, and a native-R `plot()`.

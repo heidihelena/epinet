@@ -17,9 +17,11 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from epinet import contest as econtest
+from epinet import federated as efed
 from epinet import toolkit
 
 
@@ -232,3 +234,76 @@ def graph(
         "nodes": node_records,
         "edges": edge_records,
     }
+
+
+def federated(
+    data,
+    outcome: str,
+    predictors=None,
+    *,
+    site=None,
+    n_sites: int = 2,
+    metric: str = "euclidean",
+    contest_quantile: float = 0.1,
+    random_state: int = 42,
+) -> dict:
+    """Federate the fit across sites and check it reconstructs the centralized run.
+
+    Partitions the rows across sites (by the ``site`` column if given, else into
+    ``n_sites`` balanced random groups), then runs EpiNet's federated
+    reconstruction: only per-site aggregates cross, and the result is compared to
+    the centralized fit. Returns the per-site sizes and the max absolute
+    fit-reconstruction differences (mean/sd/centroid) plus, when computable, the
+    contestability round-trip differences — all of which should be at
+    floating-point level, demonstrating the federation is exact.
+    """
+    data = pd.DataFrame(data).copy()
+    X, y, features_used, predictors = _design_matrix(data, outcome, predictors)
+    n = len(X)
+
+    if site is not None:
+        if site not in data.columns:
+            raise ValueError(f"site column {site!r} is not in the data")
+        labels = data.loc[data[outcome].notna(), site].astype(str).to_numpy()
+        if len(labels) != n:
+            raise ValueError("site labels do not align with the labeled rows")
+    else:
+        n_sites = int(n_sites)
+        if n_sites < 2:
+            raise ValueError("need at least 2 sites")
+        rng = np.random.default_rng(random_state)
+        labels = np.empty(n, dtype=object)
+        order = rng.permutation(n)
+        for rank, idx in enumerate(order):
+            labels[idx] = f"site{rank % n_sites + 1}"
+
+    if len(set(labels.tolist())) < 2:
+        raise ValueError("need at least 2 distinct sites to federate")
+
+    sim = efed.simulate(X, y, labels)
+    out = {
+        "outcome": outcome,
+        "predictors": predictors,
+        "n": n,
+        "metric": metric,
+        "n_sites": int(len(set(labels.tolist()))),
+        "sites": {s: int(info["n"]) for s, info in sim["sites"].items()},
+        "fit_diffs": {
+            "mean": float(sim["max_mean_diff"]),
+            "sd": float(sim["max_sd_diff"]),
+            "centroid": float(sim["max_centroid_diff"]),
+        },
+    }
+    try:
+        sc = efed.simulate_contestability(
+            X, y, labels, metric=metric, contest_quantile=contest_quantile
+        )
+        out["contestability_diffs"] = {
+            "mean": (None if sc["max_mean_diff"] is None else float(sc["max_mean_diff"])),
+            "std": (None if sc["max_std_diff"] is None else float(sc["max_std_diff"])),
+        }
+        out["runner_up_match"] = bool(sc["runner_up_match"])
+        out["top_voi_match"] = bool(sc["top_voi_match"])
+    except Exception:  # contestability is best-effort here; the fit check is core
+        out["contestability_diffs"] = None
+    return out
