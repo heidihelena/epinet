@@ -17,6 +17,7 @@ SystemRequirements: Python (>= 3.10) with the 'epinet' package
 Imports:
     reticulate
 Suggests:
-    testthat (>= 3.0.0)
+    testthat (>= 3.0.0),
+    igraph
 Config/testthat/edition: 3
 RoxygenNote: 7.3.1

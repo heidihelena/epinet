@@ -154,3 +154,81 @@ def contestability(
         "assignments": assignments.to_dict(orient="records"),
         "caveats": summary.get("caveats"),
     }
+
+
+def graph(
+    nodes,
+    edges,
+    outcome: str,
+    *,
+    id_column: str = "ID",
+    source_column: str = "SourceID",
+    target_column: str = "TargetID",
+    directed: bool = False,
+    weight_column=None,
+    include_centrality: bool = False,
+    n_iterations: int = 1,
+    n_bootstrap: int = 1000,
+    random_state: int = 42,
+) -> dict:
+    """Build the graph, derive graph features, and fit the honest outcome model.
+
+    Returns the model ``metrics`` and ``importance`` plus everything needed to
+    draw the network natively in R: ``nodes`` (id, degree, community, outcome)
+    and ``edges`` (source, target). Graph features (degree, clustering,
+    component size, optional centrality) join the node attributes to form the
+    design matrix, exactly as the rest of EpiNet does.
+    """
+    nodes = pd.DataFrame(nodes).copy()
+    edges = pd.DataFrame(edges).copy()
+    if id_column not in nodes.columns:
+        raise ValueError(f"id_column {id_column!r} is not in nodes")
+    if outcome not in nodes.columns:
+        raise ValueError(f"outcome column {outcome!r} is not in nodes")
+    for col in (source_column, target_column):
+        if col not in edges.columns:
+            raise ValueError(f"edge column {col!r} is not in edges")
+
+    g = toolkit.build_graph(
+        nodes, edges, id_column=id_column, source_column=source_column,
+        target_column=target_column, directed=directed, weight_column=weight_column,
+    )
+    feats = toolkit.generate_graph_features(g, include_centrality=include_centrality)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        result = toolkit.train_outcome_model(
+            nodes, feats, id_column=id_column, outcome_column=outcome,
+            output_dir=Path(tmp), n_iterations=n_iterations,
+            n_bootstrap=n_bootstrap, random_state=random_state,
+        )
+
+    communities = toolkit.community_labels(g)
+    degrees = dict(g.degree())
+    node_ids = nodes[id_column].astype(str).tolist()
+    outcomes = nodes[outcome].tolist()
+    node_records = [
+        {
+            "id": nid,
+            "degree": float(degrees.get(nid, 0)),
+            "community": int(communities.get(nid, -1)),
+            "outcome": (None if pd.isna(oc) else str(oc)),
+        }
+        for nid, oc in zip(node_ids, outcomes)
+    ]
+    edge_records = [
+        {"source": str(s), "target": str(t)}
+        for s, t in zip(edges[source_column].astype(str), edges[target_column].astype(str))
+    ]
+
+    return {
+        "outcome": outcome,
+        "id_column": id_column,
+        "directed": bool(directed),
+        "n_nodes": int(g.number_of_nodes()),
+        "n_edges": int(g.number_of_edges()),
+        "metrics": result["metrics"],
+        "importance": result["importance"].to_dict(orient="records"),
+        "feature_columns": [c for c in feats.columns if c != "ID"],
+        "nodes": node_records,
+        "edges": edge_records,
+    }

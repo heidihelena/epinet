@@ -2000,6 +2000,30 @@ class RApiAdapterTests(unittest.TestCase):
         self.assertTrue(r["feature_voi"])
         json.dumps(r)  # crosses the language boundary
 
+    def test_graph_adapter_returns_network_and_model(self):
+        from epinet import r_api
+        rng = np.random.default_rng(4)
+        n = 50
+        nodes = pd.DataFrame({
+            "ID": [f"N{i}" for i in range(n)],
+            "Outcome": rng.integers(0, 2, n),
+            "Feature1": rng.normal(size=n),
+        })
+        e = 80
+        edges = pd.DataFrame({
+            "SourceID": [f"N{i}" for i in rng.integers(0, n, e)],
+            "TargetID": [f"N{i}" for i in rng.integers(0, n, e)],
+        })
+        r = r_api.graph(nodes, edges, outcome="Outcome", n_bootstrap=0)
+        self.assertEqual(r["n_nodes"], n)
+        self.assertGreater(r["n_edges"], 0)
+        self.assertIn("degree", r["feature_columns"])
+        self.assertEqual(len(r["nodes"]), n)
+        self.assertIn("balanced_accuracy", r["metrics"])
+        # node records carry what the R network plot needs
+        self.assertEqual(set(r["nodes"][0]), {"id", "degree", "community", "outcome"})
+        json.dumps(r)
+
 
 if __name__ == "__main__":
     unittest.main()
