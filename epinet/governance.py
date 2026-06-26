@@ -31,6 +31,7 @@ it as an integrity check, not a non-repudiation guarantee.
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
@@ -197,10 +198,26 @@ def _sha256_json(obj: object) -> str:
 
 @dataclass
 class AuditLedger:
-    """Append-only, hash-chained log of egress events. Tamper-evident, not
-    forgery-proof (unsigned). ``verify`` recomputes the chain."""
+    """Append-only, hash-chained log of egress events. ``verify`` recomputes the
+    chain.
+
+    Without a ``secret_key`` the chain is **tamper-evident** (a plain SHA-256
+    chain): anyone can detect an edit, but anyone can also recompute a consistent
+    chain after forging entries. Pass a ``secret_key`` to chain with **HMAC**
+    instead — then an attacker who lacks the key cannot recompute valid hashes,
+    so the ledger is forgery-resistant (tamper-evident *and* unforgeable without
+    the key). ``verify`` must be called with the same key; a wrong/absent key
+    fails closed. The key is never written into an entry.
+    """
 
     entries: list[dict] = field(default_factory=list)
+    secret_key: bytes | None = None
+
+    def _entry_mac(self, body: dict) -> str:
+        encoded = json.dumps(body, sort_keys=True, default=str).encode("utf-8")
+        if self.secret_key is not None:
+            return hmac.new(self.secret_key, encoded, hashlib.sha256).hexdigest()
+        return hashlib.sha256(encoded).hexdigest()
 
     def append(self, event: dict, *, timestamp: str | None = None) -> dict:
         prev_hash = self.entries[-1]["entry_hash"] if self.entries else "0" * 64
@@ -210,7 +227,7 @@ class AuditLedger:
             "timestamp": timestamp or datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "event": event,
         }
-        entry = {**body, "entry_hash": _sha256_json(body)}
+        entry = {**body, "entry_hash": self._entry_mac(body), "signed": self.secret_key is not None}
         self.entries.append(entry)
         return entry
 
@@ -218,7 +235,10 @@ class AuditLedger:
         prev_hash = "0" * 64
         for entry in self.entries:
             body = {k: entry[k] for k in ("seq", "prev_hash", "timestamp", "event")}
-            if entry["prev_hash"] != prev_hash or entry["entry_hash"] != _sha256_json(body):
+            # constant-time compare; recomputes under whichever key this ledger holds.
+            if entry["prev_hash"] != prev_hash or not hmac.compare_digest(
+                entry["entry_hash"], self._entry_mac(body)
+            ):
                 return False
             prev_hash = entry["entry_hash"]
         return True

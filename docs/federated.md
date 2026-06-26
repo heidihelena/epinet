@@ -70,9 +70,10 @@ in-boundary computation layer (used for the two-site simulation and local
 scoring), which never cross a trust boundary.
 
 This closes the "forgot to call the gate" gap for **accidental** egress. It does
-not stop a determined caller from reaching a private attribute — true
-non-repudiation would need signing, which the audit ledger deliberately does not
-claim. Full governance details, including what the gate enforces versus what
+not stop a determined caller from reaching a private attribute — and while an
+HMAC `secret_key` makes the audit ledger forgery-resistant, full non-repudiation
+would additionally need external anchoring, which it does not claim. Full
+governance details, including what the gate enforces versus what
 remains a policy/legal responsibility, are in
 [governance-and-consent.md](governance-and-consent.md). Demo of the full governed
 round: `examples/federated_governed_round_demo.py`.
@@ -104,6 +105,7 @@ Demo: `examples/registry_adapter_demo.py`.
   is *comparable* across differently-structured sites is a modelling question,
   not a math one.
 - Sealing prevents accidental egress, not a determined caller; the audit ledger
-  is tamper-evident, not signed.
+  is tamper-evident by default, and forgery-resistant when given an HMAC
+  `secret_key` — but never externally anchored.
 - Small-cell suppression is a configurable threshold, not a formal privacy
   guarantee — set it, and review egress, with a DPO (see the governance note).

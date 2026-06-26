@@ -19,10 +19,15 @@ The gate **fails closed** — if any check does not pass, nothing is disclosed:
 | Consent present and current | Required consent fields must be non-empty; expired consent is refused; the conflict-of-interest flag must be acknowledged |
 | Disclosed egress | A disclosure manifest records exactly what crosses (fields, record count, suppressions, purpose, lawful basis, content hash) |
 | Tamper-evident audit | Every egress is appended to a hash-chained ledger; `verify()` detects edits |
+| Optional signed audit | `AuditLedger(secret_key=...)` chains with HMAC, so the log is forgery-resistant — an attacker without the key cannot recompute valid hashes |
 
-Honesty note: the audit ledger is tamper-**evident** (a hash chain reveals
-edits), not forgery-**proof** — it is not signed or externally anchored. Treat it
-as an integrity check, not non-repudiation.
+Honesty note: an **unkeyed** audit ledger is tamper-**evident** (a hash chain
+reveals edits) but not forgery-**proof** — anyone can recompute a consistent
+chain. Pass a `secret_key` to chain with **HMAC**: `verify()` then requires the
+same key and a wrong/absent key fails closed, so the log resists forgery as well
+as tampering. It is still not externally anchored (no timestamping authority),
+so treat even the signed ledger as an integrity control, not full
+non-repudiation.
 
 ## What the code requires but cannot validate (policy / legal)
 
