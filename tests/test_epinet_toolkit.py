@@ -2024,6 +2024,19 @@ class RApiAdapterTests(unittest.TestCase):
         self.assertEqual(set(r["nodes"][0]), {"id", "degree", "community", "outcome"})
         json.dumps(r)
 
+    def test_federated_adapter_reconstructs_centralized(self):
+        from epinet import r_api
+        data = self._table()
+        r = r_api.federated(data, outcome="copd",
+                            predictors=["age", "sex", "smoking"], n_sites=3)
+        self.assertEqual(r["n_sites"], 3)
+        self.assertEqual(sum(r["sites"].values()), r["n"])
+        # Only aggregates cross, yet the fit matches the centralized run to ~fp.
+        self.assertLess(r["fit_diffs"]["mean"], 1e-8)
+        self.assertLess(r["fit_diffs"]["sd"], 1e-8)
+        self.assertLess(r["fit_diffs"]["centroid"], 1e-8)
+        json.dumps(r)
+
 
 if __name__ == "__main__":
     unittest.main()
