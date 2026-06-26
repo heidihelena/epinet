@@ -1984,6 +1984,22 @@ class RApiAdapterTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             r_api.fit(data, outcome="copd", predictors=["age", "nope"])
 
+    def test_contestability_returns_per_row_scores_and_voi(self):
+        from epinet import r_api
+        data = self._table()
+        r = r_api.contestability(data, outcome="copd",
+                                 predictors=["age", "sex", "smoking"],
+                                 contest_quantile=0.1)
+        self.assertEqual(r["n"], len(data))
+        self.assertEqual(len(r["flip_distance"]), len(data))
+        self.assertEqual(len(r["contested"]), len(data))
+        # The contested flag marks roughly the lowest decile (non-trivial subset).
+        self.assertGreater(sum(r["contested"]), 0)
+        self.assertLess(sum(r["contested"]), len(data))
+        self.assertIsNotNone(r["contest_threshold"])
+        self.assertTrue(r["feature_voi"])
+        json.dumps(r)  # crosses the language boundary
+
 
 if __name__ == "__main__":
     unittest.main()
