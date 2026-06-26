@@ -1723,6 +1723,24 @@ class GovernanceGateTests(unittest.TestCase):
         self.assertFalse(eg.AuditLedger(secret_key=b"wrong", entries=audit.entries).verify())
         self.assertTrue(eg.AuditLedger(secret_key=key, entries=audit.entries).verify())
 
+    def test_purpose_binding_blocks_purpose_creep(self):
+        # A policy may restrict which declared purposes it discloses for, so
+        # consent for one purpose cannot be reused under a policy scoped to
+        # another. Unset allowed_purposes leaves egress unrestricted.
+        payload = self._payload()
+        consent = self._consent(purpose="research")
+        # Allowed purpose passes.
+        ok = eg.DisclosurePolicy(min_cell=5, allowed_purposes=("research", "audit"))
+        redacted, manifest = eg.check_egress(payload, policy=ok, consent=consent, now=self.NOW)
+        self.assertEqual(manifest["purpose"], "research")
+        # Purpose not in the policy's list is refused.
+        bad = eg.DisclosurePolicy(min_cell=5, allowed_purposes=("billing",))
+        with self.assertRaises(eg.GovernanceError):
+            eg.check_egress(payload, policy=bad, consent=consent, now=self.NOW)
+        # Default (None) imposes no purpose restriction.
+        eg.check_egress(payload, policy=eg.DisclosurePolicy(min_cell=5),
+                        consent=consent, now=self.NOW)
+
     def test_suppress_small_cells_handles_runner_up_counts(self):
         payload = {"n_scored": 100, "runner_up_counts": {"a": 80, "b": 2}}
         redacted, suppressed = eg.suppress_small_cells(payload, min_cell=5)

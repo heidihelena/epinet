@@ -108,6 +108,10 @@ class DisclosurePolicy:
     min_cell: int = 10                 # small-cell suppression threshold
     allowed_tier: str = "aggregate"    # policy ceiling on egress tier
     deny_fragments: tuple[str, ...] = DENY_FIELD_FRAGMENTS
+    # Purpose-binding: if set, the consent's declared purpose must be one of
+    # these, so data authorized for one purpose cannot be disclosed under a
+    # policy meant for another (purpose-creep). None = no purpose restriction.
+    allowed_purposes: tuple[str, ...] | None = None
 
 
 def _scan_for_identifiers(payload: object, deny: tuple[str, ...], path: str = "") -> list[str]:
@@ -267,6 +271,15 @@ def check_egress(
         raise GovernanceError(f"tier {tier!r} exceeds policy ceiling {policy.allowed_tier!r}")
 
     consent.validate(tier=tier, now=now)
+
+    # Purpose-binding: the policy may restrict which declared purposes it will
+    # disclose for, so consent obtained for purpose A cannot be reused under a
+    # policy scoped to purpose B (purpose-creep). Unset = no restriction.
+    if policy.allowed_purposes is not None and consent.purpose not in policy.allowed_purposes:
+        raise GovernanceError(
+            f"consent purpose {consent.purpose!r} not in policy allowed_purposes "
+            f"{list(policy.allowed_purposes)}"
+        )
 
     hits = _scan_for_identifiers(payload, policy.deny_fragments)
     if hits:
