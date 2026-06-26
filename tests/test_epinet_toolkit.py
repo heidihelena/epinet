@@ -1697,6 +1697,32 @@ class GovernanceGateTests(unittest.TestCase):
         audit.entries[0]["event"]["manifest"]["record_count"] = 9999
         self.assertFalse(audit.verify())
 
+    def test_hmac_signed_audit_chain_resists_forgery(self):
+        # With a secret key the chain is HMAC-signed: entries are marked signed,
+        # verify() succeeds with the key, and an attacker who re-chains a forged
+        # entry WITHOUT the key cannot make it verify.
+        key = b"site-secret-key"
+        audit = eg.AuditLedger(secret_key=key)
+        eg.check_egress(self._payload(), policy=eg.DisclosurePolicy(min_cell=5),
+                        consent=self._consent(), audit=audit, now=self.NOW,
+                        timestamp="2026-06-11T00:00:00+00:00")
+        self.assertTrue(audit.entries[0]["signed"])
+        self.assertTrue(audit.verify())
+
+        # Attacker edits the event and recomputes the chain with a plain SHA-256
+        # (no key). That re-chain verifies for an UNSIGNED ledger but not for the
+        # HMAC one — forgery without the key is rejected.
+        forged = eg.AuditLedger(secret_key=key)
+        forged.entries = json.loads(json.dumps(audit.entries))  # deep copy
+        forged.entries[0]["event"]["manifest"]["record_count"] = 9999
+        body = {k: forged.entries[0][k] for k in ("seq", "prev_hash", "timestamp", "event")}
+        forged.entries[0]["entry_hash"] = eg._sha256_json(body)  # attacker lacks the key
+        self.assertFalse(forged.verify())
+
+        # A wrong key also fails closed; the correct key still verifies the genuine log.
+        self.assertFalse(eg.AuditLedger(secret_key=b"wrong", entries=audit.entries).verify())
+        self.assertTrue(eg.AuditLedger(secret_key=key, entries=audit.entries).verify())
+
     def test_suppress_small_cells_handles_runner_up_counts(self):
         payload = {"n_scored": 100, "runner_up_counts": {"a": 80, "b": 2}}
         redacted, suppressed = eg.suppress_small_cells(payload, min_cell=5)
