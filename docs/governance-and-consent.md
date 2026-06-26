@@ -16,6 +16,7 @@ The gate **fails closed** — if any check does not pass, nothing is disclosed:
 | No identifying data crosses | Tier `identifiable` is hard-blocked; a field-name scan rejects payloads carrying identifiers |
 | Small-cell suppression | Per-class cells below `min_cell` are dropped; an aggregate over fewer than `min_cell` records is refused (statistical disclosure control) |
 | Tier ceiling | Egress is capped at the lower of the consent's and the policy's permitted tier |
+| Purpose-binding | If `DisclosurePolicy.allowed_purposes` is set, the consent's declared purpose must be one of them, so consent for one purpose cannot be reused under a policy scoped to another (purpose-creep) |
 | Consent present and current | Required consent fields must be non-empty; expired consent is refused; the conflict-of-interest flag must be acknowledged |
 | Disclosed egress | A disclosure manifest records exactly what crosses (fields, record count, suppressions, purpose, lawful basis, content hash) |
 | Tamper-evident audit | Every egress is appended to a hash-chained ledger; `verify()` detects edits |
