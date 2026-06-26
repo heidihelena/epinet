@@ -1251,6 +1251,34 @@ class FederatedFitTests(unittest.TestCase):
         # Out-of-range intensity is rejected.
         with self.assertRaises(ValueError):
             efed.combine_aggregates(aggs, shrinkage=1.5)
+        with self.assertRaises(ValueError):
+            efed.combine_aggregates(aggs, shrinkage="lasso")
+
+    def test_oas_shrinkage_matches_centralized_sklearn(self):
+        # The data-driven OAS intensity, computed federatedly from the pooled
+        # covariance, must equal scikit-learn's centralized OAS on the same
+        # standardized features — proving the data-driven choice federates.
+        from sklearn.covariance import OAS
+        rng = np.random.default_rng(3)
+        n = 150
+        a = rng.normal(0.0, 1.0, n)
+        X = pd.DataFrame({
+            "a": a,
+            "b": a + rng.normal(0.0, 0.1, n),
+            "c": rng.normal(0.0, 1.0, n),
+            "d": rng.normal(0.0, 1.0, n),
+        }, index=[f"n{i}" for i in range(n)])
+        y = pd.Series((rng.random(n) < 0.5).astype(int), index=X.index, name="Outcome")
+        aggs = [efed.site_aggregates(X.iloc[i::3], y.iloc[i::3]) for i in range(3)]
+        fit = efed.combine_aggregates(aggs, shrinkage="oas")
+
+        # Centralized reference: standardize the pooled data the same way, then OAS.
+        Z = ((X - X.mean()) / X.std(ddof=0)).to_numpy()
+        Z = Z - Z.mean(axis=0)
+        expected = OAS(assume_centered=True).fit(Z).shrinkage_
+        self.assertEqual(fit["shrinkage_method"], "oas")
+        self.assertAlmostEqual(fit["shrinkage"], float(expected), places=6)
+        self.assertGreater(fit["shrinkage"], 0.0)  # data says shrink
 
     def test_non_finite_features_are_rejected_with_named_columns(self):
         # A NaN/inf would silently poison sum/m2/comoment and corrupt the fit, so
