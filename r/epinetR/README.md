@@ -8,6 +8,13 @@ does no modelling of its own and cannot drift from the Python core.
 
 > Research and education demonstrator — **not clinical decision support.**
 
+> **Not to be confused with the CRAN package [`epinet`](https://cran.r-project.org/package=epinet)**
+> (Groendyke & Welch — Bayesian inference of contact networks and transmission
+> trees from epidemic data). That package *infers* who-infected-whom networks
+> from outbreak data; `epinetR` is the R interface to the separate **EpiNet**
+> analysis toolkit (honest evaluation, calibration, contestability, federated
+> aggregates). The `R` suffix marks the distinction.
+
 ## Install
 
 ```r
