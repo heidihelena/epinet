@@ -1,5 +1,5 @@
 ---
-title: "EpiNet — the Epistemic Network toolkit: honest evaluation and federated contestability for graph-shaped tabular data"
+title: "EpiNet — the Epistemic Network toolkit: a reproducible, leakage-aware evaluation workflow for graph-shaped tabular data"
 tags:
   - Python
   - network analysis
@@ -34,8 +34,13 @@ precision), calibration (Brier score always; calibration slope and intercept for
 binary outcomes), a
 label-permutation null, community-aware splitting, bootstrap intervals,
 small-cohort warnings, a reproducibility provenance record, and a TRIPOD+AI-style
-model card [@tripodai; @vancalster2019]. EpiNet is a research and education
-demonstrator, not clinical decision support.
+model card [@tripodai; @vancalster2019].
+
+EpiNet is intended to improve the reproducibility of evaluation workflows rather
+than to introduce a new predictive algorithm. The predictor itself is a standard
+random forest [@scikit-learn]; the contribution is the conservative, auditable
+workflow wrapped around it, so that the same checks travel with every analysis.
+EpiNet is a research and education demonstrator, not clinical decision support.
 
 # Statement of need
 
@@ -52,7 +57,10 @@ per-feature value-of-information ranking that names the cheapest measurement tha
 would settle the call. Researchers, students, and registry-methods groups need an
 executable reference workflow that surfaces these problems before claims are
 drawn; EpiNet packages that workflow with runnable demonstrations and CI-tested
-examples.
+examples. The need it addresses is therefore methodological reproducibility, not
+predictive performance: it standardizes *how an evaluation is conducted and
+reported* so that the conservative checks above are applied uniformly and emitted
+as an auditable record, rather than being re-implemented ad hoc per study.
 
 # State of the field
 
@@ -64,7 +72,8 @@ validation by scikit-learn [@scikit-learn] and statsmodels [@statsmodels]; and
 distributed analysis by federated frameworks
 such as DataSHIELD [@datashield] and federated-learning libraries [@rieke2020].
 EpiNet is *not* better at graph algorithms than NetworkX nor at modelling than
-scikit-learn. Its contribution is the opinionated integration of graph-shaped
+scikit-learn, and it introduces no new learning algorithm. Its contribution is
+the opinionated integration of graph-shaped
 tabular analysis, conservative leakage-aware evaluation, nearest-centroid
 contestability, and an exactly federatable analytic spine into one small,
 auditable tool aimed at cohorts where the dominant failure modes are leakage,
@@ -104,6 +113,13 @@ centralized use; exact federated reproduction of that shrinkage would require
 additional (fourth-moment) aggregates and is documented as a current limitation,
 not a feature.
 
+The contestability layer is offered as a software diagnostic for triage and
+review — the flip-distance and value-of-information ranking are exact properties
+of the stated nearest-centroid model, not empirical claims about a cohort.
+Whether contestability scores are clinically or epidemiologically useful is a
+methodological question for separate validation work and is out of scope for this
+software paper.
+
 Disclosure of any aggregate is mediated by a fail-closed governance gate. The
 gate requires a consent metadata object and refuses disclosure when required
 fields or expiry dates are missing, applies small-cell suppression and a tier
@@ -121,8 +137,10 @@ biomedical-style cohorts — nodule risk, lymphoma subtyping, a registry adapter
 federated contestability, and governance-mediated egress — together with
 representation baselines (including a learned node-embedding comparison) and an
 external-validation harness, and a local workbench that drives the same engine
-from a web interface. The v0.4.0 release freezes these materials as a
-citation snapshot with CI-tested examples (Python 3.10–3.12) and documented
+from a web interface. The v0.4.1 release — installable from PyPI as
+`vahtian-epinet`, with an R interface that wraps the same tested core through
+reticulate so results cannot diverge across languages — freezes these materials
+as a citation snapshot with CI-tested examples (Python 3.10–3.12) and documented
 methodological limits. Its near-term significance is to give reviewers, students,
 and registry-methods researchers an executable reference workflow for identifying
 leakage, chance-level performance, calibration failure, and contestable boundary
