@@ -2,11 +2,11 @@
 title: "EpiNet — the Epistemic Network toolkit: a reproducible, leakage-aware evaluation workflow for graph-shaped tabular data"
 tags:
   - Python
+  - reproducible research
+  - model evaluation
   - network analysis
-  - clinical prediction models
   - calibration
   - federated analysis
-  - reproducibility
 authors:
   - name: "Heidi Andersén"
     orcid: 0000-0001-5923-5865
@@ -128,6 +128,28 @@ signed) audit ledger. The aggregates it permits are de-identified, not anonymous
 and the project makes no claim of GDPR, MDR, EU AI Act, or national-framework
 compliance: lawful basis, data-protection assessment, controllership, and consent
 validity remain legal and policy responsibilities, documented separately.
+
+# Example
+
+A complete analysis runs from two CSV files — one of nodes (entities, with the
+outcome column) and one of edges (relationships):
+
+```bash
+epinet \
+  --nodes nodes.csv --edges edges.csv \
+  --outcome-column Outcome --target-outcome 1 \
+  --split-strategy community --permutation-test 1000 \
+  --output-dir results/
+```
+
+The run writes a self-contained bundle to `results/`: a model card with
+discrimination and calibration, the permutation-null comparison and bootstrap
+intervals, diagnostic figures, a machine-readable claims check, and a provenance
+record of inputs, configuration, and seeds. The same analysis is available as a
+Python API (`from vahtian.epinet import toolkit`), through the graphical
+workbench (which emits an equivalent `analysis.yaml`), and from R via the
+`vahtian.epinet` interface — all driving the identical engine, so a result is
+reproducible regardless of how it was launched.
 
 # Research impact statement
 
