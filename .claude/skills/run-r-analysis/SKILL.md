@@ -7,7 +7,7 @@ description: >-
   R<->Python interop, and validate R packages with R CMD check. Use when the
   user wants to run R code, an R analysis, or an R package in this environment,
   or mentions R, Rscript, reticulate, ggplot, an .R/.Rmd/.qmd file, the EpiNet
-  epinetR package, or "RStudio".
+  vahtian.epinet R package, or "RStudio".
 ---
 
 # Running R analyses in Claude Code
@@ -98,16 +98,16 @@ A container-locale warning (`cannot set locale ... en_US.UTF-8`) is an
 environment artifact, not a package fault — CI won't show it. In CI, use
 `r-lib/actions` (`check-r-package` runs `rcmdcheck`, failing at WARNING level).
 
-## 7. Worked example — the EpiNet `epinetR` package
+## 7. Worked example — the EpiNet `vahtian.epinet` package
 
-`epinetR` (in `r/epinetR/`) wraps the Python `epinet` core via reticulate.
+`vahtian.epinet` (in `r/vahtian.epinet/`) wraps the Python `vahtian.epinet` core via reticulate.
 
 ```bash
 sudo apt-get install -y -qq r-base-core r-cran-reticulate r-cran-testthat
 cd <repo> && pip install -e . && export RETICULATE_PYTHON=$(which python3)
-R CMD INSTALL r/epinetR
+R CMD INSTALL r/vahtian.epinet
 Rscript -e '
-  suppressMessages(library(epinetR))
+  suppressMessages(library(vahtian.epinet))
   set.seed(1); n <- 150
   df <- data.frame(age=rnorm(n,60,10),
                    sex=sample(c("M","F"),n,TRUE),

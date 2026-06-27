@@ -1,4 +1,4 @@
-"""Tabular adapter for language bindings (notably the ``epinetR`` R package).
+"""Tabular adapter for language bindings (notably the ``vahtian.epinet`` R package).
 
 EpiNet's core is graph-shaped, but many callers — especially from R — have an
 ordinary table: one row per subject, an outcome column, and predictor columns.
