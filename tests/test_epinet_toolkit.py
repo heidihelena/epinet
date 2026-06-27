@@ -1947,7 +1947,7 @@ if _HAS_HYPOTHESIS:
 
 
 class RApiAdapterTests(unittest.TestCase):
-    """The tabular adapter the epinetR package wraps: flat table in, honest
+    """The tabular adapter the vahtian.epinet package wraps: flat table in, honest
     outcome-model summary out, one-hot encoding categoricals."""
 
     def _table(self, n=160, seed=0):

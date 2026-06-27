@@ -7,7 +7,7 @@ description: >-
   Suggests), handle packages that wrap Python via reticulate, and run the
   submission checks (win-builder, R-hub, cran-comments, reverse dependencies).
   Use when preparing or submitting an R package to CRAN, fixing R CMD check
-  NOTEs/WARNINGs/ERRORs, or reviewing a package for CRAN-readiness — e.g. epinetR.
+  NOTEs/WARNINGs/ERRORs, or reviewing a package for CRAN-readiness — e.g. vahtian.epinet.
 ---
 
 # CRAN compliance
