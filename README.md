@@ -123,7 +123,7 @@ epinet \
   --output-dir epinet_outputs
 ```
 
-(`epinet ...` is the installed console command; `python -m epinet.toolkit ...`
+(`epinet ...` is the installed console command; `python -m vahtian.epinet.toolkit ...`
 works identically without installing.) This runs graph-feature generation, an
 honestly-evaluated outcome model, and shortest-path summaries side by side.
 

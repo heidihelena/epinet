@@ -86,7 +86,7 @@ Typical outputs:
 ## Minimum Example
 
 ```bash
-python -m epinet.toolkit \
+python -m vahtian.epinet.toolkit \
   --nodes synthetic_nodes.csv \
   --edges synthetic_edges.csv \
   --outcome-column Outcome \

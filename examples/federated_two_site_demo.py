@@ -20,8 +20,8 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from epinet import federated as efed
-from epinet import toolkit as et
+from vahtian.epinet import federated as efed
+from vahtian.epinet import toolkit as et
 
 
 def build_design(nodes_csv: str, edges_csv: str) -> tuple[pd.DataFrame, pd.Series]:

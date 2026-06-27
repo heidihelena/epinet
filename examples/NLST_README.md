@@ -27,7 +27,7 @@ transfer agreement. This toolkit cannot and does not download it.
    smoking, family history, growth (T0/T1/T2) and confirmed cancer outcomes, you can
    now run the **full** comparison that LIDC could not support:
    - compute Brock / Mayo / PLCOm2012 / NTOG from `nlst_provenance.csv`,
-   - `python -m epinet.toolkit ... --run-clusters` for centroid structure,
+   - `python -m vahtian.epinet.toolkit ... --run-clusters` for centroid structure,
    - `test_fusion.py` for multi-test fusion against the real `LungCancer` label,
    with adequate benign representation for measurable specificity.
 

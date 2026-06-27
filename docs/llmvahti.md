@@ -51,7 +51,7 @@ from epinet import llmvahti as elv
 results = elv.run_blinded_audit("human.csv", "judge.csv", "out/")
 ```
 
-(`python -m epinet.llmvahti ...` works identically without installing the
+(`python -m vahtian.epinet.llmvahti ...` works identically without installing the
 console script.) Either path produces `judge_audit.md`, `judge_audit.json`, and
 per-verdict `verdict_assignments.csv` containing:
 

@@ -7,9 +7,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from epinet import claims, htmlreport, palette
-from epinet import workbench as wb
-from epinet.config import AnalysisConfig
+from vahtian.epinet import claims, htmlreport, palette
+from vahtian.epinet import workbench as wb
+from vahtian.epinet.config import AnalysisConfig
 
 
 class ClaimsGateTests(unittest.TestCase):
@@ -97,7 +97,7 @@ class ClaimsGateTests(unittest.TestCase):
 
 class PaletteTests(unittest.TestCase):
     def test_apply_palette_swaps_figure_colors(self):
-        from epinet import viz
+        from vahtian.epinet import viz
 
         palette.apply_palette("vahtian")
         self.assertEqual(viz.CATEGORY_COLORS[0], "#5E4F99")

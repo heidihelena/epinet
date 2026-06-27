@@ -38,7 +38,7 @@ from sklearn.metrics import (
 from sklearn.model_selection import GridSearchCV, GroupShuffleSplit, learning_curve, train_test_split
 from sklearn.preprocessing import label_binarize
 
-from epinet import common as epinet_common
+from vahtian.epinet import common as epinet_common
 
 # Classification metrics where a higher value is better, vs the calibration
 # error (Brier) where lower is better. The split matters for the one-sided
@@ -1291,7 +1291,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     # validation, so messy real-world CSVs run without hand-editing. Every rename
     # is recorded and provenance hashes the normalized tables (see below).
     if getattr(args, "normalize", True):
-        from epinet import ingest as epinet_ingest
+        from vahtian.epinet import ingest as epinet_ingest
 
         nodes, edges, ingest_report = epinet_ingest.normalize_tables(
             nodes,
@@ -1396,7 +1396,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
 
         # TRIPOD+AI-flavored model card: the human-readable companion to the
         # metrics JSON (intended use, performance, calibration, limitations).
-        from epinet import report as epinet_report
+        from vahtian.epinet import report as epinet_report
 
         (output_dir / "model_card.md").write_text(
             epinet_report.model_card(model_result["metrics"]) + "\n"
@@ -1404,7 +1404,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
 
     cluster_result: dict[str, object] | None = None
     if getattr(args, "run_clusters", False):
-        from epinet import cluster as epinet_cluster
+        from vahtian.epinet import cluster as epinet_cluster
 
         design = build_design_matrix(
             features,
@@ -1431,7 +1431,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
 
     contest_result: dict[str, object] | None = None
     if getattr(args, "run_contest", False):
-        from epinet import contest as epinet_contest
+        from vahtian.epinet import contest as epinet_contest
 
         contest_design = build_design_matrix(
             features,
@@ -1457,7 +1457,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         summary["contestability"] = contest_result["summary"]
 
     if getattr(args, "make_plots", False):
-        from epinet import viz as epinet_viz
+        from vahtian.epinet import viz as epinet_viz
 
         if getattr(args, "plot_dpi", None):
             epinet_viz.DEFAULT_DPI = args.plot_dpi

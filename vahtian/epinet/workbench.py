@@ -32,8 +32,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from epinet import schema as epinet_schema
-from epinet.config import AnalysisConfig, validate_config
+from vahtian.epinet import schema as epinet_schema
+from vahtian.epinet.config import AnalysisConfig, validate_config
 
 # Files that make up the portable result bundle. Missing ones are skipped (a
 # descriptive-only run has no model_metrics, etc.) so the bundle reflects what the
@@ -214,7 +214,7 @@ def _min_class_size(nodes_path: str | None, outcome_column: str) -> int | None:
         col = pd.read_csv(nodes_path, usecols=[outcome_column])[outcome_column]
     except Exception:  # noqa: BLE001
         return None
-    from epinet.common import labeled_mask
+    from vahtian.epinet.common import labeled_mask
 
     labeled = col[labeled_mask(col).to_numpy()]
     if labeled.empty:
@@ -355,7 +355,7 @@ def _split_comparison(config: AnalysisConfig, nodes_path: str, edges_path: str) 
     purpose is the random-vs-community AUROC gap in the claims check. Recomputes
     the cheap graph features rather than threading them out of ``et.run``.
     """
-    from epinet import toolkit as et
+    from vahtian.epinet import toolkit as et
 
     nodes, edges = et.load_tables(nodes_path, edges_path)
     graph = et.build_graph(
@@ -400,7 +400,7 @@ def run_config(config: AnalysisConfig, *, skip_gates: bool = False) -> dict:
     """Execute a plan end-to-end and write the result bundle. The config is the
     only source of truth — this reads nothing from any UI.
     """
-    from epinet import toolkit as et
+    from vahtian.epinet import toolkit as et
 
     output_dir = Path(config.project.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -420,7 +420,7 @@ def run_config(config: AnalysisConfig, *, skip_gates: bool = False) -> dict:
 
     # Apply the report palette before the engine draws, so the figures match the
     # HTML report chrome. Returns the resolved palette for the report theme.
-    from epinet import palette as epinet_palette
+    from vahtian.epinet import palette as epinet_palette
 
     resolved_palette = epinet_palette.apply_palette(config.analysis.reporting.plot_palette)
 
@@ -437,7 +437,7 @@ def run_config(config: AnalysisConfig, *, skip_gates: bool = False) -> dict:
     baseline_paired: dict | None = None
     if run_model and config.analysis.model.baselines:
         try:
-            from epinet import baselines as eb
+            from vahtian.epinet import baselines as eb
 
             nodes_df, edges_df = et.load_tables(nodes_path, edges_path)
             baseline_result = eb.compare_representations(
@@ -470,7 +470,7 @@ def run_config(config: AnalysisConfig, *, skip_gates: bool = False) -> dict:
     external_validation: dict | None = None
     if config.analysis.evaluation.external_validation and config.data.validation_path and run_model:
         try:
-            from epinet import validation as exv
+            from vahtian.epinet import validation as exv
 
             val_nodes, val_edges = _prepare_one(
                 config, config.data.validation_path,
@@ -492,7 +492,7 @@ def run_config(config: AnalysisConfig, *, skip_gates: bool = False) -> dict:
     # Scientific claims check: distil every diagnostic above into plain-language
     # claim gates, append them to the model card, and write the machine-readable
     # record. Generated for every run (descriptive runs get the caveat too).
-    from epinet import claims as epinet_claims
+    from vahtian.epinet import claims as epinet_claims
 
     model_metrics = summary.get("model") if isinstance(summary.get("model"), dict) else None
     claims = epinet_claims.scientific_claims_check(
@@ -512,7 +512,7 @@ def run_config(config: AnalysisConfig, *, skip_gates: bool = False) -> dict:
     # Branded, portable HTML report — the polished bundle artifact.
     if config.analysis.reporting.html_report:
         try:
-            from epinet import htmlreport
+            from vahtian.epinet import htmlreport
 
             htmlreport.build_html_report(
                 output_dir, config=config, claims=claims,

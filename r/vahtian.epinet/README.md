@@ -1,9 +1,9 @@
-# epinetR
+# vahtian.epinet
 
 An R interface to [EpiNet](https://github.com/heidihelena/epinet), a transparent
-toolkit for **honestly-evaluated** outcome models. `epinetR` is a thin
+toolkit for **honestly-evaluated** outcome models. `vahtian.epinet` is a thin
 [`reticulate`](https://rstudio.github.io/reticulate/) wrapper over the tested
-Python `epinet` package, so the algorithms are **single-sourced** — the R layer
+Python `vahtian-epinet` package, so the algorithms are **single-sourced** — the R layer
 does no modelling of its own and cannot drift from the Python core.
 
 > Research and education demonstrator — **not clinical decision support.**
@@ -11,18 +11,18 @@ does no modelling of its own and cannot drift from the Python core.
 > **Not to be confused with the CRAN package [`epinet`](https://cran.r-project.org/package=epinet)**
 > (Groendyke & Welch — Bayesian inference of contact networks and transmission
 > trees from epidemic data). That package *infers* who-infected-whom networks
-> from outbreak data; `epinetR` is the R interface to the separate **EpiNet**
+> from outbreak data; `vahtian.epinet` is the R interface to the separate **EpiNet**
 > analysis toolkit (honest evaluation, calibration, contestability, federated
-> aggregates). The `R` suffix marks the distinction.
+> aggregates). The `vahtian.` namespace marks the distinction.
 
 ## Install
 
 ```r
 # install.packages("remotes")
-remotes::install_github("heidihelena/epinet", subdir = "r/epinetR")
+remotes::install_github("heidihelena/epinet", subdir = "r/vahtian.epinet")
 ```
 
-You also need the Python `epinet` package on an interpreter reticulate can see:
+You also need the Python `vahtian-epinet` package on an interpreter reticulate can see:
 
 ```bash
 pip install epinet         # or: pip install -e .  from the repo root
@@ -38,7 +38,7 @@ reticulate::use_python("/path/to/python", required = TRUE)
 ## Usage
 
 ```r
-library(epinetR)
+library(vahtian.epinet)
 
 result <- epinet(
   data,

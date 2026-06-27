@@ -19,9 +19,9 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from epinet import federated as efed
-from epinet import governance as eg
-from epinet import toolkit as et
+from vahtian.epinet import federated as efed
+from vahtian.epinet import governance as eg
+from vahtian.epinet import toolkit as et
 
 
 def consent_for(site: str, controller: str) -> eg.Consent:

@@ -3,7 +3,7 @@ requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "epinet"
+name = "vahtian-epinet"
 version = "0.4.0"
 description = "EpiNet (Epistemic Network): transparent network/feature-space analysis with honest evaluation (calibration, permutation nulls, model cards), nearest-centroid contestability, and federated governed aggregates."
 readme = "README.md"
@@ -29,18 +29,19 @@ ui = ["streamlit>=1.30"]       # the local EpiNet Workbench UI
 dev = ["pytest>=7.0", "ruff>=0.4", "hypothesis>=6.0"]
 
 [project.scripts]
-epinet = "epinet.toolkit:main"
-epinet-workbench = "epinet.workbench:main"
-epinet-llmvahti = "epinet.llmvahti:main"
+epinet = "vahtian.epinet.toolkit:main"
+epinet-workbench = "vahtian.epinet.workbench:main"
+epinet-llmvahti = "vahtian.epinet.llmvahti:main"
 
 [project.urls]
 Homepage = "https://github.com/heidihelena/epinet"
 
-[tool.setuptools]
-# Package layout: all modules live under the `epinet` package, imported as
-# `from epinet import toolkit`, etc. (consolidated from the former flat
-# `epinet_*.py` modules).
-packages = ["epinet"]
+# Package layout: modules live under the `vahtian.epinet` package, imported as
+# `from vahtian.epinet import toolkit`, etc. `vahtian` is a PEP 420 namespace
+# (no __init__.py) so sibling tools (e.g. vahtian.citevahti) can ship separately.
+[tool.setuptools.packages.find]
+include = ["vahtian*"]
+namespaces = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

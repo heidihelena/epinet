@@ -38,7 +38,7 @@ predicting the tier from morphology is not circular.
 pip install pylidc           # optional, for this example only
 python examples/build_lidc_cohort.py        # ~3 min; writes lidc_*.csv
 
-python -m epinet.toolkit \
+python -m vahtian.epinet.toolkit \
   --nodes examples/lidc_nodes.csv --edges examples/lidc_edges.csv \
   --outcome-column Outcome --include-centrality --no-run-paths \
   --split-strategy community --n-iterations 30 --permutation-test 100 \

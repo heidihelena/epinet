@@ -71,7 +71,7 @@ def apply_palette(name: str | None) -> dict:
 
     # Swap the figure module's categorical colours and highlight in place; the
     # plotting functions reference these module globals when they draw.
-    from epinet import viz
+    from vahtian.epinet import viz
 
     viz.CATEGORY_COLORS = list(palette["categorical"])
     viz.HIGHLIGHT = palette["highlight"]

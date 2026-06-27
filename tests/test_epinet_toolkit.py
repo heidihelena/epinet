@@ -9,16 +9,16 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from epinet import baselines as eb
-from epinet import cluster as ec
-from epinet import common as ecommon
-from epinet import contest as ecn
-from epinet import federated as efed
-from epinet import governance as eg
-from epinet import report as epinet_report
-from epinet import toolkit as et
-from epinet import validation as exv
-from epinet import viz as ev
+from vahtian.epinet import baselines as eb
+from vahtian.epinet import cluster as ec
+from vahtian.epinet import common as ecommon
+from vahtian.epinet import contest as ecn
+from vahtian.epinet import federated as efed
+from vahtian.epinet import governance as eg
+from vahtian.epinet import report as epinet_report
+from vahtian.epinet import toolkit as et
+from vahtian.epinet import validation as exv
+from vahtian.epinet import viz as ev
 
 
 class CommonHelperTests(unittest.TestCase):
@@ -1762,7 +1762,7 @@ class RegistryAdapterTests(unittest.TestCase):
         })
 
     def test_adapts_flat_table_to_canonical_schema(self):
-        from epinet import registry as ereg
+        from vahtian.epinet import registry as ereg
 
         profile = ereg.RegistryProfile(id_column="case_id", outcome_column="status")
         result = ereg.adapt(self._table(), profile)
@@ -1776,19 +1776,19 @@ class RegistryAdapterTests(unittest.TestCase):
         self.assertEqual(len(manifest["source_sha256"]), 64)
 
     def test_missing_id_column_raises(self):
-        from epinet import registry as ereg
+        from vahtian.epinet import registry as ereg
 
         with self.assertRaises(ValueError):
             ereg.adapt(self._table(), ereg.RegistryProfile(id_column="nope"))
 
     def test_edge_strategy_none_yields_no_edges(self):
-        from epinet import registry as ereg
+        from vahtian.epinet import registry as ereg
 
         result = ereg.adapt(self._table(), ereg.RegistryProfile(id_column="case_id", edge_strategy="none"))
         self.assertEqual(len(result["edges"]), 0)
 
     def test_shared_attribute_edges_link_matching_cases(self):
-        from epinet import registry as ereg
+        from vahtian.epinet import registry as ereg
 
         profile = ereg.RegistryProfile(
             id_column="case_id", edge_strategy="shared", shared_column="site",
@@ -1798,7 +1798,7 @@ class RegistryAdapterTests(unittest.TestCase):
         self.assertEqual(len(result["edges"]), 30)
 
     def test_output_runs_through_epinet(self):
-        from epinet import registry as ereg
+        from vahtian.epinet import registry as ereg
 
         result = ereg.adapt(self._table(), ereg.RegistryProfile(id_column="case_id", outcome_column="status"))
         graph = et.build_graph(result["nodes"], result["edges"], weight_column="Weight")
@@ -1807,7 +1807,7 @@ class RegistryAdapterTests(unittest.TestCase):
         self.assertEqual(len(features), 12)
 
     def test_same_profile_makes_sites_column_compatible(self):
-        from epinet import registry as ereg
+        from vahtian.epinet import registry as ereg
 
         table = self._table(n=12)
         profile = ereg.RegistryProfile(id_column="case_id", outcome_column="status")
@@ -1817,7 +1817,7 @@ class RegistryAdapterTests(unittest.TestCase):
         self.assertEqual(list(a.columns), list(b.columns))
 
     def test_profile_from_dict_rejects_unknown_keys(self):
-        from epinet import registry as ereg
+        from vahtian.epinet import registry as ereg
 
         with self.assertRaises(ValueError):
             ereg.RegistryProfile.from_dict({"id_column": "x", "bogus": 1})
@@ -1827,7 +1827,7 @@ class IngestNormalizationTests(unittest.TestCase):
     """Front-end column-alias normalization (epinet_ingest)."""
 
     def test_aliases_are_resolved_to_canonical_schema(self):
-        from epinet import ingest as ein
+        from vahtian.epinet import ingest as ein
 
         nodes = pd.DataFrame([{"patient_id": "p1", "label": 1}, {"patient_id": "p2", "label": 0}])
         edges = pd.DataFrame([{"from": "p1", "to": "p2"}])
@@ -1844,7 +1844,7 @@ class IngestNormalizationTests(unittest.TestCase):
         self.assertIn("patient_id", nodes.columns)
 
     def test_canonical_input_is_a_noop_but_still_hashed(self):
-        from epinet import ingest as ein
+        from vahtian.epinet import ingest as ein
 
         nodes = pd.DataFrame([{"ID": "a", "Outcome": 1}])
         edges = pd.DataFrame([{"SourceID": "a", "TargetID": "a"}])
@@ -1885,7 +1885,7 @@ class IngestNormalizationTests(unittest.TestCase):
             self.assertEqual(roles, {"node_id", "outcome", "edge_source", "edge_target"})
 
     def test_no_normalize_flag_keeps_strict_validation(self):
-        from epinet import ingest as ein  # noqa: F401  (module exists; flag bypasses it)
+        from vahtian.epinet import ingest as ein  # noqa: F401  (module exists; flag bypasses it)
 
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
@@ -1960,7 +1960,7 @@ class RApiAdapterTests(unittest.TestCase):
         return pd.DataFrame({"age": age, "sex": sex, "smoking": smoking, "copd": copd})
 
     def test_fit_returns_clean_summary_and_encodes_categoricals(self):
-        from epinet import r_api
+        from vahtian.epinet import r_api
         data = self._table()
         res = r_api.fit(data, outcome="copd", predictors=["age", "sex", "smoking"],
                         n_iterations=1, n_bootstrap=0)
@@ -1977,7 +1977,7 @@ class RApiAdapterTests(unittest.TestCase):
         json.dumps(res)
 
     def test_fit_validates_columns_and_outcome(self):
-        from epinet import r_api
+        from vahtian.epinet import r_api
         data = self._table()
         with self.assertRaises(ValueError):
             r_api.fit(data, outcome="missing")
@@ -1985,7 +1985,7 @@ class RApiAdapterTests(unittest.TestCase):
             r_api.fit(data, outcome="copd", predictors=["age", "nope"])
 
     def test_contestability_returns_per_row_scores_and_voi(self):
-        from epinet import r_api
+        from vahtian.epinet import r_api
         data = self._table()
         r = r_api.contestability(data, outcome="copd",
                                  predictors=["age", "sex", "smoking"],
@@ -2001,7 +2001,7 @@ class RApiAdapterTests(unittest.TestCase):
         json.dumps(r)  # crosses the language boundary
 
     def test_graph_adapter_returns_network_and_model(self):
-        from epinet import r_api
+        from vahtian.epinet import r_api
         rng = np.random.default_rng(4)
         n = 50
         nodes = pd.DataFrame({
@@ -2025,7 +2025,7 @@ class RApiAdapterTests(unittest.TestCase):
         json.dumps(r)
 
     def test_federated_adapter_reconstructs_centralized(self):
-        from epinet import r_api
+        from vahtian.epinet import r_api
         data = self._table()
         r = r_api.federated(data, outcome="copd",
                             predictors=["age", "sex", "smoking"], n_sites=3)

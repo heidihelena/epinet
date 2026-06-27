@@ -26,7 +26,7 @@ fabricated. Two paths are therefore provided:
 ```bash
 python examples/build_lidc_cohort.py          # writes lidc_*.csv (needs pylidc)
 python examples/divergence_topography.py       # writes lidc_divergence_nodes.csv
-python -m epinet.toolkit \
+python -m vahtian.epinet.toolkit \
   --nodes examples/lidc_divergence_nodes.csv --edges examples/lidc_edges.csv \
   --outcome-column Outcome --include-centrality --no-run-paths \
   --split-strategy community --n-iterations 30 --permutation-test 200 \

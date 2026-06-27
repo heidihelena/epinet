@@ -27,8 +27,8 @@ except ModuleNotFoundError:  # pragma: no cover - exercised only when extra miss
         "    pip install -e \".[ui]\"\nthen run: epinet-workbench ui"
     )
 
-from epinet import workbench as wb
-from epinet.config import AnalysisConfig
+from vahtian.epinet import workbench as wb
+from vahtian.epinet.config import AnalysisConfig
 
 SCREENS = ["1. Data", "2. Schema", "3. Plan", "4. Run", "5. Report"]
 

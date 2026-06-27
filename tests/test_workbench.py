@@ -13,9 +13,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from epinet import config as ecfg
-from epinet import schema as esch
-from epinet import workbench as wb
+from vahtian.epinet import config as ecfg
+from vahtian.epinet import schema as esch
+from vahtian.epinet import workbench as wb
 
 
 def _make_nodes(path, n=60, *, single_class=False, tiny_positive=False, leakage=False, seed=0):
