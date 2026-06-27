@@ -1,7 +1,7 @@
 test_that("epinet_graph builds the network, fits the model, and plots", {
   skip_if_not(
-    reticulate::py_module_available("epinet"),
-    "Python 'epinet' package not available to reticulate"
+    reticulate::py_module_available("vahtian.epinet"),
+    "Python 'vahtian.epinet' package not available to reticulate"
   )
 
   set.seed(3)
