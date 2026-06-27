@@ -48,10 +48,15 @@ evaluation is the default, not an afterthought.** Where most modelling code
 optimizes a headline number, EpiNet is built to resist fooling itself — a
 label-permutation null, calibration, bootstrap intervals, and community-aware
 splitting run alongside every headline metric; contestability makes each call
-inspectable; and the federated layer shares findings across sites without
+inspectable; and the optional federated layer shares findings across sites without
 pooling records. The name reads as *Epistemic Network*: the question is not just
-what the model predicts, but how well-founded each call is. It remains a
-**research and education demonstrator — not clinical decision support.**
+what the model predicts, but how well-founded each call is.
+
+EpiNet's contribution is **methodological reproducibility, not a new predictor**:
+the model is a standard random forest, and the value is the conservative,
+auditable evaluation workflow wrapped around it, so the same checks travel with
+every analysis. It remains a **research and education demonstrator — not clinical
+decision support.**
 
 ## What it looks like
 
