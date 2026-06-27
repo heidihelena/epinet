@@ -1,6 +1,6 @@
 """EpiNet (Epistemic Network): transparent network/feature-space analysis.
 
-Modules are imported as ``from epinet import toolkit`` etc. The flat
+Modules are imported as ``from vahtian.epinet import toolkit`` etc. The flat
 ``epinet_*.py`` layout was consolidated into this package in 0.4.
 """
 

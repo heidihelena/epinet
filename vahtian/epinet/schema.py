@@ -22,7 +22,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from epinet.config import Schema
+from vahtian.epinet.config import Schema
 
 # Column-name fragments that commonly leak the outcome (post-hoc / future / label
 # echoes). Matching is a *warning*, never an automatic exclusion — the user decides.

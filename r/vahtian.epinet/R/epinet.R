@@ -1,9 +1,9 @@
-# epinetR — a thin reticulate wrapper over the tested Python `epinet` package.
+# vahtian.epinet — a thin reticulate wrapper over the tested Python `vahtian.epinet` package.
 # The R layer does no modelling of its own: it marshals a data frame to the
-# `epinet.r_api.fit` adapter and wraps the returned summary in an S3 object.
+# `vahtian.epinet.r_api.fit` adapter and wraps the returned summary in an S3 object.
 
 .epinet_api <- function() {
-  if (!reticulate::py_module_available("epinet")) {
+  if (!reticulate::py_module_available("vahtian.epinet")) {
     stop(
       "The Python package 'epinet' is not available to reticulate.\n",
       "Install it (e.g. `pip install epinet`) and/or point reticulate at the ",
@@ -15,7 +15,7 @@
   # delay_load = TRUE so the package namespace loads even when Python (or the
   # 'epinet' module) is absent — required for CRAN check machines. The guard
   # above gives a clear error if a function is actually called without it.
-  reticulate::import("epinet.r_api", delay_load = TRUE)
+  reticulate::import("vahtian.epinet.r_api", delay_load = TRUE)
 }
 
 #' Fit EpiNet's honestly-evaluated outcome model on a data frame

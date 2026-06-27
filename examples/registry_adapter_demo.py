@@ -20,8 +20,8 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from epinet import registry as ereg
-from epinet import toolkit as et
+from vahtian.epinet import registry as ereg
+from vahtian.epinet import toolkit as et
 
 
 def fake_registry_export(n=60, seed=0) -> pd.DataFrame:

@@ -24,9 +24,9 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from epinet import contest as ecn
-from epinet import federated as efed
-from epinet import toolkit as et
+from vahtian.epinet import contest as ecn
+from vahtian.epinet import federated as efed
+from vahtian.epinet import toolkit as et
 
 
 def main() -> int:

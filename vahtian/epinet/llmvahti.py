@@ -59,8 +59,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from epinet import common as epinet_common
-from epinet import contest as ecn
+from vahtian.epinet import common as epinet_common
+from vahtian.epinet import contest as ecn
 
 CAVEATS = (
     "Agreement is measured against the human rater by design: it quantifies alignment "
@@ -338,7 +338,7 @@ def _bootstrap_calibration(
     ``n_boot`` is non-positive — an honest "no interval" rather than a falsely
     tight one, matching the agreement-metric bootstrap.
     """
-    from epinet.toolkit import calibration_slope_intercept
+    from vahtian.epinet.toolkit import calibration_slope_intercept
 
     n = len(correct)
     if n < _MIN_ITEMS_FOR_CI or n_boot <= 0:
@@ -394,7 +394,7 @@ def judge_calibration(
     block when there are enough jointly-rated items (same small-sample rationale
     as the agreement metrics — a Brier or slope on tens of items is noisy).
     """
-    from epinet.toolkit import calibration_slope_intercept
+    from vahtian.epinet.toolkit import calibration_slope_intercept
 
     frame = pd.DataFrame(
         {

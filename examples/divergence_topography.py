@@ -122,7 +122,7 @@ def main() -> None:
     print(f"Wrote {here / 'lidc_divergence_nodes.csv'} (reuse lidc_edges.csv).")
     print("\nNext: run the standard pipeline to test whether discordance is")
     print("structured in feature space (predictable above a permutation null):")
-    print("  python -m epinet.toolkit \\")
+    print("  python -m vahtian.epinet.toolkit \\")
     print("    --nodes examples/lidc_divergence_nodes.csv --edges examples/lidc_edges.csv \\")
     print("    --outcome-column Outcome --include-centrality --no-run-paths \\")
     print("    --split-strategy community --n-iterations 30 --permutation-test 200 \\")

@@ -25,8 +25,8 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-from epinet import cluster as epinet_cluster
-from epinet import common as epinet_common
+from vahtian.epinet import cluster as epinet_cluster
+from vahtian.epinet import common as epinet_common
 
 EDGE_COLUMNS = ["SourceID", "TargetID", "Weight"]
 

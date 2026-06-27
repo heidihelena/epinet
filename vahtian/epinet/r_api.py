@@ -20,9 +20,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from epinet import contest as econtest
-from epinet import federated as efed
-from epinet import toolkit
+from vahtian.epinet import contest as econtest
+from vahtian.epinet import federated as efed
+from vahtian.epinet import toolkit
 
 
 def _design_matrix(data, outcome: str, predictors=None):

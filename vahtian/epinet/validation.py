@@ -30,8 +30,8 @@ from sklearn.metrics import (
     precision_recall_fscore_support,
 )
 
-from epinet import common as epinet_common
-from epinet import toolkit as et
+from vahtian.epinet import common as epinet_common
+from vahtian.epinet import toolkit as et
 
 
 def _design(nodes, edges, *, id_column, outcome_column, source_column, target_column,

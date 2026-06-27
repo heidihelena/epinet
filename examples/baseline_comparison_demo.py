@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import build_lymphoma_workflow as blw
 
-from epinet import baselines as eb
+from vahtian.epinet import baselines as eb
 
 
 def main() -> int:

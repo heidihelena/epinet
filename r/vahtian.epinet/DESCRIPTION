@@ -1,4 +1,4 @@
-Package: epinetR
+Package: vahtian.epinet
 Title: R Interface to the EpiNet Toolkit
 Version: 0.1.0
 Authors@R:

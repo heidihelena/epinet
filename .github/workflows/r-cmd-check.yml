@@ -3,13 +3,13 @@ name: R-CMD-check
 on:
   push:
     paths:
-      - 'r/epinetR/**'
-      - 'epinet/**'
+      - 'r/vahtian.epinet/**'
+      - 'vahtian/**'
       - '.github/workflows/r-cmd-check.yml'
   pull_request:
     paths:
-      - 'r/epinetR/**'
-      - 'epinet/**'
+      - 'r/vahtian.epinet/**'
+      - 'vahtian/**'
       - '.github/workflows/r-cmd-check.yml'
 
 jobs:
@@ -37,9 +37,9 @@ jobs:
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
           extra-packages: any::rcmdcheck
-          working-directory: r/epinetR
+          working-directory: r/vahtian.epinet
 
       - uses: r-lib/actions/check-r-package@v2
         with:
-          working-directory: r/epinetR
+          working-directory: r/vahtian.epinet
           upload-snapshots: true

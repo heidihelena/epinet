@@ -27,7 +27,7 @@ from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
 from sklearn.preprocessing import StandardScaler
 
-from epinet import common as epinet_common
+from vahtian.epinet import common as epinet_common
 
 
 def standardize(X: pd.DataFrame) -> tuple[np.ndarray, list[str]]:
