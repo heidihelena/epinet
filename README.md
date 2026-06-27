@@ -91,8 +91,9 @@ Ki67, …). The same lens runs on any cohort. More figures in
   value-of-information ranking. See [docs/methods.md](docs/methods.md).
 - **Input normalization** — maps common column aliases onto the schema before
   validation; never silently (every rename logged, raw + normalized hashed).
-- **Federated pipeline** — reconstruct the scaler, centroids, and contestability
-  from per-site aggregates only, behind a fail-closed governance gate. See
+- **Federated pipeline** (*optional*) — reconstruct the scaler, centroids, and
+  contestability from per-site aggregates only, behind a fail-closed governance
+  gate. See
   [docs/federated.md](docs/federated.md) and
   [docs/governance-and-consent.md](docs/governance-and-consent.md).
 - **Baselines & external validation** — compare graph features against a
@@ -106,6 +107,12 @@ Ki67, …). The same lens runs on any cohort. More figures in
   [docs/llmvahti.md](docs/llmvahti.md).
 
 ## Install
+
+```bash
+pip install vahtian-epinet   # from PyPI: the package + the `epinet` command
+```
+
+From a source checkout (for development or the example extras):
 
 ```bash
 pip install -e .            # installs the package + the `epinet` command
