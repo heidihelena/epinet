@@ -12,7 +12,10 @@
       call. = FALSE
     )
   }
-  reticulate::import("epinet.r_api", delay_load = FALSE)
+  # delay_load = TRUE so the package namespace loads even when Python (or the
+  # 'epinet' module) is absent — required for CRAN check machines. The guard
+  # above gives a clear error if a function is actually called without it.
+  reticulate::import("epinet.r_api", delay_load = TRUE)
 }
 
 #' Fit EpiNet's honestly-evaluated outcome model on a data frame
