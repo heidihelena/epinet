@@ -25,7 +25,7 @@ remotes::install_github("heidihelena/epinet", subdir = "r/vahtian.epinet")
 You also need the Python `vahtian-epinet` package on an interpreter reticulate can see:
 
 ```bash
-pip install epinet         # or: pip install -e .  from the repo root
+pip install vahtian-epinet  # or: pip install -e .  from the repo root
 ```
 
 If reticulate doesn't find it, point it at the right Python:

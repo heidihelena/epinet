@@ -6,7 +6,7 @@ Authors@R:
            role = c("aut", "cre"))
 Description: An R interface to EpiNet, a transparent toolkit for honestly
     evaluated outcome models on tabular and graph-shaped data. It wraps the
-    tested Python 'epinet' package through 'reticulate', so the algorithms are
+    tested Python 'vahtian.epinet' package through 'reticulate', so the algorithms are
     single-sourced and cannot diverge across languages, and returns calibrated,
     caveated results: discrimination, calibration, bootstrap intervals, a
     label-permutation null, and feature importance. A research and education
@@ -15,7 +15,7 @@ License: MIT + file LICENSE
 URL: https://github.com/heidihelena/epinet
 BugReports: https://github.com/heidihelena/epinet/issues
 Encoding: UTF-8
-SystemRequirements: Python (>= 3.10) with the 'epinet' package
+SystemRequirements: Python (>= 3.10) with the 'vahtian-epinet' package
 Imports:
     reticulate
 Suggests:

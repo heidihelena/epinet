@@ -5,15 +5,15 @@
 .epinet_api <- function() {
   if (!reticulate::py_module_available("vahtian.epinet")) {
     stop(
-      "The Python package 'epinet' is not available to reticulate.\n",
-      "Install it (e.g. `pip install epinet`) and/or point reticulate at the ",
+      "The Python package 'vahtian.epinet' is not available to reticulate.\n",
+      "Install it (e.g. `pip install vahtian-epinet`) and/or point reticulate at the ",
       "right interpreter with reticulate::use_python() or the RETICULATE_PYTHON ",
       "environment variable.",
       call. = FALSE
     )
   }
   # delay_load = TRUE so the package namespace loads even when Python (or the
-  # 'epinet' module) is absent — required for CRAN check machines. The guard
+  # 'vahtian.epinet' module) is absent — required for CRAN check machines. The guard
   # above gives a clear error if a function is actually called without it.
   reticulate::import("vahtian.epinet.r_api", delay_load = TRUE)
 }
