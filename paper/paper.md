@@ -151,6 +151,13 @@ workbench (which emits an equivalent `analysis.yaml`), and from R via the
 `vahtian.epinet` interface — all driving the identical engine, so a result is
 reproducible regardless of how it was launched.
 
+![Label-permutation null produced by the example run. The histogram is the
+distribution of weighted F1 under 100 random label permutations (the no-signal
+reference); the vertical line is the observed score. Separation between the two —
+here $p = 0.01$ — is what distinguishes real signal from a score achievable by
+chance, and it is emitted by default rather than on
+request.\label{fig:permnull}](permutation_null.png){ width=70% }
+
 # Research impact statement
 
 EpiNet's current impact is as a reproducible research and education demonstrator.
