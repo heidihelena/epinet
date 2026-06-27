@@ -8,6 +8,10 @@ name: Publish to PyPI
 on:
   release:
     types: [published]
+  push:
+    tags:
+      - 'v*'          # pushing a version tag (e.g. v0.4.0) publishes that version
+  workflow_dispatch:  # manual trigger from the Actions tab
 
 jobs:
   build:
