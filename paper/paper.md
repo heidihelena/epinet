@@ -84,7 +84,7 @@ are cited and depended upon rather than reimplemented.
 
 # Software design
 
-EpiNet uses a small single-package module layout (`epinet/`) and CSV inputs to
+EpiNet uses a small namespaced module layout (`vahtian/epinet/`) and CSV inputs to
 keep the analysis inspectable, and favours conservative defaults over
 configurability: evaluation
 outputs include discrimination, calibration, a null-model comparison, bootstrap
@@ -120,14 +120,14 @@ Whether contestability scores are clinically or epidemiologically useful is a
 methodological question for separate validation work and is out of scope for this
 software paper.
 
-Disclosure of any aggregate is mediated by a fail-closed governance gate. The
-gate requires a consent metadata object and refuses disclosure when required
-fields or expiry dates are missing, applies small-cell suppression and a tier
-ceiling, emits a disclosure manifest, and appends to a tamper-evident (not
-signed) audit ledger. The aggregates it permits are de-identified, not anonymous,
-and the project makes no claim of GDPR, MDR, EU AI Act, or national-framework
-compliance: lawful basis, data-protection assessment, controllership, and consent
-validity remain legal and policy responsibilities, documented separately.
+Federation and governance are optional layers, not part of the default
+single-machine workflow. When aggregates are disclosed across sites, a
+fail-closed governance gate mediates release: it requires a consent metadata
+object, applies small-cell suppression and a tier ceiling, emits a disclosure
+manifest, and appends to a tamper-evident audit ledger. The aggregates it permits
+are de-identified, not anonymous, and the project makes no claim of GDPR, MDR, EU
+AI Act, or national-framework compliance — lawful basis, controllership, and
+consent validity remain legal responsibilities documented separately.
 
 # Example
 
