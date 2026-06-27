@@ -14,7 +14,7 @@ authors:
 affiliations:
   - name: Vahtian
     index: 1
-date: 13 June 2026
+date: 27 June 2026
 bibliography: paper.bib
 ---
 
@@ -138,7 +138,7 @@ outcome column) and one of edges (relationships):
 epinet \
   --nodes nodes.csv --edges edges.csv \
   --outcome-column Outcome --target-outcome 1 \
-  --split-strategy community --permutation-test 1000 \
+  --split-strategy community --permutation-test 100 \
   --output-dir results/
 ```
 

@@ -1,6 +1,6 @@
 cff-version: 1.2.0
 message: "If you use EpiNet, please cite it as below."
-title: "EpiNet: the Epistemic Network toolkit — transparent network and feature-space analysis with honest evaluation and federated contestability"
+title: "EpiNet — the Epistemic Network toolkit: a reproducible, leakage-aware evaluation workflow for graph-shaped tabular data"
 abstract: >-
   EpiNet is a research/education toolkit for graph-shaped datasets. It computes
   graph features, evaluates an outcome model with discrimination and calibration
