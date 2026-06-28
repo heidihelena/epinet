@@ -4,13 +4,17 @@ name: Publish to PyPI
 # (OIDC, no API token) when a GitHub Release is published. Register the pending
 # publisher on PyPI as: project vahtian-epinet, owner heidihelena, repo epinet,
 # workflow publish.yml, environment pypi.
+#
+# Triggers are limited to `release: published` and a manual `workflow_dispatch`.
+# A `push: tags` trigger was removed because creating a GitHub Release also
+# pushes its tag, which fired this workflow twice for the same version — the
+# second upload then failed with PyPI's immutable "File already exists" (400).
+# `skip-existing: true` below additionally turns a re-publish of an
+# already-released version into a no-op instead of a failure.
 
 on:
   release:
     types: [published]
-  push:
-    tags:
-      - 'v*'          # pushing a version tag (e.g. v0.4.0) publishes that version
   workflow_dispatch:  # manual trigger from the Actions tab
 
 jobs:
@@ -43,3 +47,5 @@ jobs:
           path: dist/
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true   # re-publishing an existing version is a no-op, not a failure
