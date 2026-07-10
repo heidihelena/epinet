@@ -1,5 +1,6 @@
 """Tests for the scientific claims check, palettes, and HTML report layer."""
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -93,6 +94,22 @@ class ClaimsGateTests(unittest.TestCase):
         md = claims.claims_markdown(out)
         self.assertIn("Scientific claims check", md)
         self.assertIn("Do not claim", md)
+        self.assertIn("Graph semantics", md)
+
+    def test_graph_semantics_gate_similarity_is_exploratory(self):
+        gate = claims.graph_semantics_gate({"graph_mode": "similarity"})
+        self.assertEqual(gate["status"], "exploratory only")
+        self.assertIn("feature-space exploration", gate["statement"])
+
+    def test_graph_semantics_gate_observed_relation_requires_pre_outcome_timing(self):
+        unresolved = claims.graph_semantics_gate(
+            {"semantics": "observed_relation", "edge_timing": "unknown", "has_edge_table": True}
+        )
+        self.assertEqual(unresolved["status"], "timing unresolved")
+        documented = claims.graph_semantics_gate(
+            {"semantics": "observed_relation", "edge_timing": "pre_outcome", "has_edge_table": True}
+        )
+        self.assertEqual(documented["status"], "relation documented")
 
 
 class PaletteTests(unittest.TestCase):
@@ -155,6 +172,8 @@ class RunConfigReportTests(unittest.TestCase):
 
             self.assertTrue((out / "index.html").exists())
             self.assertTrue((out / "claims_check.json").exists())
+            cc = json.loads((out / "claims_check.json").read_text())
+            self.assertIn("graph_semantics", cc)
             self.assertTrue((out / "split_comparison.json").exists())
             self.assertEqual(summary.get("html_report"), "index.html")
             import zipfile

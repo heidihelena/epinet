@@ -968,6 +968,27 @@ class ScientificStandardsTests(unittest.TestCase):
                 self.assertEqual(result["metrics"]["model_name"], "xgboost")
                 self.assertEqual(result["metrics"]["estimator"], "XGBoostClassifier")
 
+    def test_mlp_model_is_optional_and_selectable(self):
+        if importlib.util.find_spec("torch") is None:
+            with self.assertRaises(ImportError):
+                et._build_estimator("mlp", random_state=0)
+            return
+
+        nodes, features = self._binary_cohort(n=16)
+        _, grid = et._build_estimator("mlp", random_state=0)
+        self.assertEqual(et._model_display_name("mlp"), "TorchMLPClassifier")
+        self.assertIn("model__hidden_dim", grid)
+
+        with tempfile.TemporaryDirectory() as td:
+            result = et.train_outcome_model(
+                nodes, features, id_column="ID", outcome_column="Outcome",
+                output_dir=Path(td), n_iterations=1, n_bootstrap=0,
+                model_name="mlp",
+            )
+        self.assertEqual(result["metrics"]["model_name"], "mlp")
+        self.assertEqual(result["metrics"]["estimator"], "TorchMLPClassifier")
+        self.assertIn("model__hidden_dim", result["metrics"]["best_params"])
+
     def test_multiclass_calibration_block_is_present_and_honest(self):
         # Calibration must not be silently absent for multiclass: Brier is
         # reported, slope/intercept are explicitly None with a stated reason.

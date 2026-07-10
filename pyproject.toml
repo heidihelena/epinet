@@ -27,6 +27,7 @@ lidc = ["pylidc>=0.2.3"]       # LIDC-IDRI / LUNA16 cohort reconstruction
 excel = ["xlrd>=2.0", "openpyxl>=3.0"]  # reading the TCIA diagnosis spreadsheets
 ui = ["streamlit>=1.30"]       # the local EpiNet Workbench UI
 xgboost = ["xgboost>=1.7"]     # optional XGBoost estimator backend
+torch = ["torch>=2.0"]         # optional tiny PyTorch MLP estimator backend
 dev = ["pytest>=7.0", "ruff>=0.4", "hypothesis>=6.0"]
 
 [project.scripts]

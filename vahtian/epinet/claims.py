@@ -5,14 +5,16 @@ act on, *what may and may not be claimed* from them. It is deliberately
 conservative: it never says a model "works", only whether a specific, narrow
 claim clears a specific bar.
 
-Four gates plus a standing caveat:
+Five gates plus a standing caveat:
 
 1. **Permutation null** — "signal above null" vs "signal not detected".
 2. **Split sensitivity** — random vs community(-aware) split; a large drop means
    the headline number leaned on leakage between connected cases.
 3. **Baseline** — does the model beat the no-information floor?
 4. **External validation** — run or not, and how far performance transported.
-5. **Clinical-utility caveat** — generated into every report, always.
+5. **Graph semantics** — whether graph-shaped claims are licensed by the edge
+   meaning and edge timing.
+6. **Clinical-utility caveat** — generated into every report, always.
 
 Each gate returns a ``status`` and a one-line ``statement``; :func:`claims_markdown`
 renders them for the model card and :func:`scientific_claims_check` assembles the
@@ -280,6 +282,68 @@ def external_validation_gate(extval: dict | None) -> dict:
             "internal_roc_auc": internal, "external_roc_auc": external, "drift": drift}
 
 
+def graph_semantics_gate(graph_semantics: dict | None = None) -> dict:
+    """Gate graph-shaped claims by edge meaning and edge timing.
+
+    A similarity graph is a feature transformation, not evidence that relations
+    transmitted risk or information. Observed relation graphs can license
+    network claims only when the edge was knowable before the outcome.
+    """
+    graph_semantics = graph_semantics or {}
+    mode = graph_semantics.get("graph_mode") or graph_semantics.get("mode") or "none"
+    semantics = graph_semantics.get("semantics") or "unspecified"
+    timing = graph_semantics.get("edge_timing") or graph_semantics.get("timing") or "unknown"
+    has_edge_table = bool(graph_semantics.get("has_edge_table"))
+
+    if mode == "none" and semantics == "unspecified" and not has_edge_table:
+        return {
+            "status": "not applicable",
+            "statement": "No graph relation was supplied or synthesized; do not make a relational network claim.",
+            "semantics": semantics,
+            "edge_timing": timing,
+        }
+    if mode == "similarity" or semantics == "similarity":
+        return {
+            "status": "exploratory only",
+            "statement": (
+                "Similarity graph: edges are derived from feature proximity. Treat graph outputs as "
+                "feature-space exploration; do not claim relation, contagion, referral, or message-passing "
+                "effects from these edges."
+            ),
+            "semantics": "similarity",
+            "edge_timing": timing,
+        }
+    if semantics == "observed_relation":
+        if timing == "pre_outcome":
+            return {
+                "status": "relation documented",
+                "statement": (
+                    "Observed relation graph with pre-outcome edge timing documented. Network-aware "
+                    "predictive claims may be tested, but still depend on community-aware and external validation."
+                ),
+                "semantics": semantics,
+                "edge_timing": timing,
+            }
+        return {
+            "status": "timing unresolved",
+            "statement": (
+                "Observed relation graph supplied, but edge timing is not documented as pre-outcome. "
+                "Do not claim predictive graph utility until post-outcome or mixed-time leakage is ruled out."
+            ),
+            "semantics": semantics,
+            "edge_timing": timing,
+        }
+    return {
+        "status": "not specified",
+        "statement": (
+            "Graph semantics were not specified. State whether edges are feature-derived similarity "
+            "or observed relations before making graph-shaped epidemiological claims."
+        ),
+        "semantics": semantics,
+        "edge_timing": timing,
+    }
+
+
 def scientific_claims_check(
     metrics: dict | None,
     *,
@@ -287,9 +351,11 @@ def scientific_claims_check(
     baseline_metrics: dict | None = None,
     baseline_paired: dict | None = None,
     external_validation: dict | None = None,
+    graph_semantics: dict | None = None,
     model_trained: bool = True,
 ) -> dict:
     """Assemble the full machine-readable claims record."""
+    graph = graph_semantics_gate(graph_semantics)
     if not model_trained or not metrics:
         return {
             "model_trained": False,
@@ -299,6 +365,7 @@ def scientific_claims_check(
             "split_comparison": split_gate(None),
             "baselines": {"status": "not run", "statement": "No model.", "margin": None},
             "external_validation": external_validation_gate(external_validation),
+            "graph_semantics": graph,
             "clinical_caveat": CLINICAL_CAVEAT,
         }
 
@@ -333,6 +400,7 @@ def scientific_claims_check(
         "split_comparison": split,
         "baselines": base,
         "external_validation": extv,
+        "graph_semantics": graph,
         "clinical_caveat": CLINICAL_CAVEAT,
     }
 
@@ -341,6 +409,7 @@ def claims_markdown(claims: dict) -> str:
     """Render the claims check as a markdown section for the model card."""
     out = ["## Scientific claims check", "",
            f"**Headline:** {claims['headline']}", ""]
+    graph = claims.get("graph_semantics") or graph_semantics_gate(None)
     rows = [
         ("Permutation null", claims["permutation"]["status"], claims["permutation"]["statement"]),
         ("Split sensitivity", claims["split_comparison"]["status"],
@@ -348,6 +417,7 @@ def claims_markdown(claims: dict) -> str:
         ("Baseline floor", claims["baselines"]["status"], claims["baselines"]["statement"]),
         ("External validation", claims["external_validation"]["status"],
          claims["external_validation"]["statement"]),
+        ("Graph semantics", graph["status"], graph["statement"]),
     ]
     out.append("| gate | status | reading |")
     out.append("| --- | --- | --- |")

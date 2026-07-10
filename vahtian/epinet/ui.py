@@ -56,16 +56,21 @@ def screen_data(state: dict) -> None:
     validation = st.file_uploader(
         "validation.csv (optional — external cohort)", type=["csv"], key="validation"
     )
+    validation_edges = st.file_uploader(
+        "validation_edges.csv (optional)", type=["csv"], key="validation_edges"
+    )
     output_dir = st.text_input("Output folder", value="epinet_outputs/workbench_run")
 
     if st.button("Validate & continue", type="primary", disabled=nodes is None):
         nodes_path = _save_upload(nodes)
         edges_path = _save_upload(edges) if edges else None
         validation_path = _save_upload(validation) if validation else None
+        validation_edges_path = _save_upload(validation_edges) if validation_edges else None
         config, profile = wb.build_plan(
             nodes_path=nodes_path,
             edges_path=edges_path,
             validation_path=validation_path,
+            validation_edges_path=validation_edges_path,
             output_dir=output_dir,
         )
         state["config"] = config
@@ -251,7 +256,8 @@ def screen_report(state: dict) -> None:
         for label, key in [("Permutation null", "permutation"),
                            ("Split sensitivity", "split_comparison"),
                            ("Baseline floor", "baselines"),
-                           ("External validation", "external_validation")]:
+                           ("External validation", "external_validation"),
+                           ("Graph semantics", "graph_semantics")]:
             gate = cc.get(key, {})
             st.markdown(f"- **{label} — {gate.get('status', '—')}**: {gate.get('statement', '')}")
         st.warning(cc.get("clinical_caveat", ""))

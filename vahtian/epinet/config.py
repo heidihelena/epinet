@@ -31,7 +31,9 @@ TASKS = ("classification", "descriptive")
 SPLIT_METHODS = ("random", "stratified", "community_aware")
 GRAPH_MODES = ("none", "similarity")
 SIMILARITY_METRICS = ("euclidean", "mixed")
-MODEL_CHOICES = ("random_forest", "logistic_regression", "xgboost")
+GRAPH_SEMANTICS = ("unspecified", "similarity", "observed_relation")
+EDGE_TIMING = ("unknown", "pre_outcome", "post_outcome", "mixed")
+MODEL_CHOICES = ("random_forest", "logistic_regression", "xgboost", "mlp")
 
 
 @dataclass
@@ -80,6 +82,10 @@ class Graph:
     similarity_metric: str = "euclidean"
     k_neighbors: int = 10
     include_centrality: bool = False
+    # What the edge means and when it was knowable. These fields do not change
+    # graph construction; they constrain the claims check.
+    semantics: str = "unspecified"   # similarity or observed_relation when known
+    edge_timing: str = "unknown"     # pre_outcome is required for predictive graph claims
 
 
 @dataclass
@@ -239,6 +245,10 @@ def validate_config(config: AnalysisConfig) -> list[str]:
         errors.append("analysis.graph.k_neighbors must be >= 1")
     if a.graph.similarity_metric not in SIMILARITY_METRICS:
         errors.append(f"analysis.graph.similarity_metric must be one of {SIMILARITY_METRICS}")
+    if a.graph.semantics not in GRAPH_SEMANTICS:
+        errors.append(f"analysis.graph.semantics must be one of {GRAPH_SEMANTICS}")
+    if a.graph.edge_timing not in EDGE_TIMING:
+        errors.append(f"analysis.graph.edge_timing must be one of {EDGE_TIMING}")
 
     if not 0.0 < a.contestability.quantile < 1.0:
         errors.append("analysis.contestability.quantile must be between 0 and 1")

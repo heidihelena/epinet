@@ -152,17 +152,22 @@ def _status_class(status: str) -> str:
     # green, or the HTML report would over-claim exactly where the data is silent.
     if any(k in s for k in ("not detected", "at floor", "leakage", "incomplete", "not resolvable")):
         return "gate-warn"
-    if any(k in s for k in ("not run", "not compared")):
+    if any(k in s for k in ("not run", "not compared", "exploratory", "unresolved", "not specified")):
         return "gate-warn"
     return "gate-ok"
 
 
 def _claims_section(claims: dict) -> str:
+    graph = claims.get("graph_semantics", {
+        "status": "not applicable",
+        "statement": "No graph relation was supplied or synthesized; do not make a relational network claim.",
+    })
     rows = [
         ("Permutation null", claims["permutation"]),
         ("Split sensitivity", claims["split_comparison"]),
         ("Baseline floor", claims["baselines"]),
         ("External validation", claims["external_validation"]),
+        ("Graph semantics", graph),
     ]
     body = ['<table><tr><th>Gate</th><th>Status</th><th>Reading</th></tr>']
     for name, gate in rows:
