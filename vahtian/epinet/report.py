@@ -95,7 +95,7 @@ def model_card(metrics: dict, *, title: str = "EpiNet outcome model") -> str:
         _table(
             ["property", "value"],
             [
-                ["Estimator", "RandomForestClassifier"],
+                ["Estimator", _fmt(metrics.get("estimator") or metrics.get("model_name") or "RandomForestClassifier")],
                 ["Tuned hyperparameters", _fmt(metrics.get("best_params"))],
                 ["Split strategy", _fmt(metrics.get("split_strategy"))],
                 ["Evaluation iterations", _fmt(metrics.get("n_iterations"))],

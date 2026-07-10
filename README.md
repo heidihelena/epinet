@@ -28,10 +28,11 @@ subtyping).
 > [Scope and caveats](#scope-and-caveats).
 
 What distinguishes EpiNet from a thin scikit-learn wrapper is that **honest
-evaluation is the default path**: a label-permutation null, calibration, and
-(where appropriate) community-aware splitting run alongside the headline metric,
-so a good score reflects real signal rather than leakage or chance. Developed as
-part of **Vahtian**; MIT licensed.
+evaluation is the default path**: calibration and uncertainty are reported with
+the headline metric, while label-permutation nulls and community-aware splitting
+are built into the same workflow when requested (and enabled by the Workbench's
+default plan), so a good score can be checked against leakage or chance.
+Developed as part of **Vahtian**; MIT licensed.
 
 **Jump to:** [About](#about-this-project) · [What it does](#what-it-does) ·
 [Install](#install) · [Quick start](#quick-start) ·
@@ -47,16 +48,18 @@ into a research-methods demonstrator with one organizing principle: **honest
 evaluation is the default, not an afterthought.** Where most modelling code
 optimizes a headline number, EpiNet is built to resist fooling itself — a
 label-permutation null, calibration, bootstrap intervals, and community-aware
-splitting run alongside every headline metric; contestability makes each call
-inspectable; and the optional federated layer shares findings across sites without
-pooling records. The name reads as *Epistemic Network*: the question is not just
-what the model predicts, but how well-founded each call is.
+splitting live in the same run record rather than separate notebooks;
+contestability makes each call inspectable; and the optional federated layer
+shares findings across sites without pooling records. The name reads as
+*Epistemic Network*: the question is not just what the model predicts, but how
+well-founded each call is.
 
 EpiNet's contribution is **methodological reproducibility, not a new predictor**:
-the model is a standard random forest, and the value is the conservative,
-auditable evaluation workflow wrapped around it, so the same checks travel with
-every analysis. It remains a **research and education demonstrator — not clinical
-decision support.**
+the default model is a standard random forest, with logistic regression and
+optional XGBoost alternatives, and the value is the conservative, auditable
+evaluation workflow wrapped around the estimator so the same checks travel with
+every analysis. It remains a **research and education demonstrator — not
+clinical decision support.**
 
 ## What it looks like
 
@@ -77,11 +80,15 @@ Ki67, …). The same lens runs on any cohort. More figures in
 
 - **Graph features** — degree, weighted degree, clustering, component size,
   isolate flag, optional betweenness/closeness/PageRank.
-- **Honest outcome model** — RandomForest over graph features + node attributes,
-  with discrimination (AUROC, AUPRC), classification (balanced accuracy, MCC, F1),
-  **calibration** (Brier always; slope/intercept for binary outcomes), bootstrap CIs, permutation importance,
-  a label-permutation null, community-aware splitting, small-cohort warnings, a
-  reproducibility `provenance` block, and a TRIPOD+AI-flavoured `model_card.md`.
+- **Honest outcome model** — selectable estimator over graph features + node
+  attributes: RandomForest by default, scaled regularized logistic regression as
+  an interpretable comparator, or optional XGBoost (`pip install
+  "vahtian-epinet[xgboost]"`). Every option uses the same evaluation harness:
+  discrimination (AUROC, AUPRC), classification (balanced accuracy, MCC, F1),
+  **calibration** (Brier always; slope/intercept for binary outcomes), bootstrap
+  CIs, permutation importance, a label-permutation null, community-aware
+  splitting, small-cohort warnings, a reproducibility `provenance` block, and a
+  TRIPOD+AI-flavoured `model_card.md`.
 - **Shortest paths** — from sources to target nodes or target-outcome nodes, with
   per-target coverage.
 - **Feature-space clustering** — k-means centroids + per-node distance to each
@@ -119,6 +126,7 @@ pip install -e .            # installs the package + the `epinet` command
 pip install -e ".[dev]"     # also pytest + ruff + hypothesis (for development)
 pip install -e ".[lidc]"    # pylidc, for the LIDC-IDRI / LUNA16 examples
 pip install -e ".[excel]"   # xlrd + openpyxl, for the TCIA diagnosis spreadsheets
+pip install -e ".[xgboost]" # optional XGBoost estimator backend
 ```
 
 `requirements.txt` lists the core runtime dependencies if you prefer not to
@@ -132,6 +140,7 @@ epinet \
   --edges synthetic_edges.csv \
   --outcome-column Outcome \
   --target-outcome 1 \
+  --model random_forest \
   --output-dir epinet_outputs
 ```
 

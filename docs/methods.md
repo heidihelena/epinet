@@ -16,25 +16,26 @@ reports the spread:
 }
 ```
 
-Tuning is **imbalance-aware**: the search grid includes `class_weight`
-(`None`, `balanced`, `balanced_subsample`) and selects on `balanced_accuracy`
-(unweighted mean recall across classes) rather than a support-weighted score.
-A support-weighted score is dominated by the majority class and would never
-select the minority weighting, so on the skewed outcomes typical of
-epidemiology the model would otherwise collapse toward the majority. On
-balanced data the search simply selects `class_weight=None`, leaving behaviour
-unchanged.
+The primary estimator is selectable with `--model`: `random_forest` (default),
+`logistic_regression` (scaled, regularized, and useful as an interpretable
+comparator), or `xgboost` (optional dependency). Tuning is **imbalance-aware**
+where the estimator exposes the relevant controls: the random-forest and
+logistic grids include class weighting, and every grid selects on
+`balanced_accuracy` (unweighted mean recall across classes) rather than a
+support-weighted score. A support-weighted score is dominated by the majority
+class and would never select minority weighting, so on the skewed outcomes
+typical of epidemiology the model would otherwise collapse toward the majority.
 
-The grid also tunes `min_samples_leaf` (`1`, `3`) to regularize the forest on
-the small, noisy cohorts this toolkit targets. Because it is selected by the
-same cross-validation, a larger leaf is chosen only when it improves held-out
-balanced accuracy, so it never degrades the selected model.
+The random-forest grid also tunes `min_samples_leaf` (`1`, `3`) to regularize
+trees on the small, noisy cohorts this toolkit targets. Because it is selected
+by the same cross-validation, a larger leaf is chosen only when it improves
+held-out balanced accuracy, so it never degrades the selected model.
 
 ## Probability Calibration
 
-Random forests are typically **over-confident** — their vote-share
+Some estimators, especially tree ensembles, can be **over-confident** — their
 probabilities are too extreme, which the calibration slope (`< 1`) exposes. For
-binary outcomes the tuned forest is refit inside a `CalibratedClassifierCV`
+binary outcomes the tuned estimator is refit inside a `CalibratedClassifierCV`
 (**Platt / sigmoid** scaling — isotonic overfits the small calibration sets
 here) to map raw scores toward observed event frequencies. The calibrated
 probabilities are **adopted only when they lower the held-out Brier score**, so
@@ -48,15 +49,18 @@ the calibrator honestly, and for multiclass outcomes (the Cox slope is binary).
 
 ## Decision-Threshold Tuning (opt-in)
 
-A forest's default `0.5`/argmax decision rule under-calls the minority class on
-imbalanced outcomes. With `--tune-threshold`, binary predictions instead use the
-threshold that **maximizes balanced accuracy on the out-of-bag training scores**
-— each training row scored only by the trees that did not see it, so the test
-set is never used and there is no leakage. The threshold defaults to `0.5` when
-nothing beats it on the OOB scores. `model_metrics.json` then carries a
-`threshold_tuning` block with the chosen threshold and the held-out balanced
-accuracy at `0.5` vs the tuned value, so you can see whether the training-side
-choice **transported**.
+For the random-forest estimator, the default `0.5`/argmax decision rule can
+under-call the minority class on imbalanced outcomes. With `--tune-threshold`,
+binary predictions instead use the threshold that **maximizes balanced accuracy
+on the out-of-bag training scores** — each training row scored only by the trees
+that did not see it, so the test set is never used and there is no leakage. The
+threshold defaults to `0.5` when nothing beats it on the OOB scores.
+`model_metrics.json` then carries a `threshold_tuning` block with the chosen
+threshold and the held-out balanced accuracy at `0.5` vs the tuned value, so you
+can see whether the training-side choice **transported**. Threshold tuning is
+currently RF-only; selecting it with `--model logistic_regression` or
+`--model xgboost` fails closed rather than tuning on leaked training
+predictions.
 
 It is **off by default and deliberately so**: the imbalance-aware `class_weight`
 tuning above already shifts the effective boundary, so the extra gain from
@@ -286,4 +290,3 @@ decisions, add:
 - external validation
 - privacy and governance review
 - human review of any operational recommendations
-

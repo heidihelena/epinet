@@ -31,6 +31,7 @@ TASKS = ("classification", "descriptive")
 SPLIT_METHODS = ("random", "stratified", "community_aware")
 GRAPH_MODES = ("none", "similarity")
 SIMILARITY_METRICS = ("euclidean", "mixed")
+MODEL_CHOICES = ("random_forest", "logistic_regression", "xgboost")
 
 
 @dataclass
@@ -224,6 +225,8 @@ def validate_config(config: AnalysisConfig) -> list[str]:
         errors.append(f"analysis.task must be one of {TASKS}, got {a.task!r}")
     if a.task == "classification" and not s.outcome_column:
         errors.append("classification task requires schema.outcome_column")
+    if a.model.primary not in MODEL_CHOICES:
+        errors.append(f"analysis.model.primary must be one of {MODEL_CHOICES}")
 
     if a.split.method not in SPLIT_METHODS:
         errors.append(f"analysis.split.method must be one of {SPLIT_METHODS}")

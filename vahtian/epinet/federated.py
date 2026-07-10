@@ -20,8 +20,8 @@ What this does NOT do
 - It assumes a shared feature contract: the same feature columns, defined the
   same way, at every site. Whether a graph feature is *comparable* across
   differently-structured sites is a modelling question, not a math one.
-- The RandomForest outcome model is not mean-poolable and is out of scope. This
-  is the centroid / contestability layer only — which is exactly EpiNet's
+- The supervised outcome estimator is not mean-poolable and is out of scope.
+  This is the centroid / contestability layer only — which is exactly EpiNet's
   differentiated spine.
 
 Disclosure note: the messages here are counts and sums. ``min_cell`` enforces a

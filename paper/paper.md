@@ -14,7 +14,7 @@ authors:
 affiliations:
   - name: Vahtian
     index: 1
-date: 27 June 2026
+date: 9 July 2026
 bibliography: paper.bib
 ---
 
@@ -28,17 +28,21 @@ reports when a nearest-centroid classification is fragile. The name reads
 but how well-founded each call is — how contestable, how calibrated, and how well
 it transports to new data.
 
-Its distinguishing feature is that conservative evaluation is the default rather
-than an opt-in. Every outcome-model run reports discrimination, calibration, a
-label-permutation null, community-aware splitting, bootstrap intervals,
-small-cohort warnings, a provenance record, and a TRIPOD+AI-style model card
-[@tripodai; @vancalster2019].
+Its distinguishing feature is that conservative evaluation is the organising
+workflow rather than a post-hoc checklist. Outcome-model runs report
+discrimination, calibration, repeated-split uncertainty, bootstrap intervals,
+small-cohort warnings, provenance, and a TRIPOD+AI-style model card
+[@tripodai; @vancalster2019]. Label-permutation nulls and community-aware splits
+are first-class evaluation modes rather than separate scripts, and the Workbench
+enables the permutation null in its reproducible default plan.
 
 EpiNet is intended to improve the reproducibility of evaluation workflows rather
-than to introduce a new predictive algorithm. The predictor itself is a standard
-random forest [@scikit-learn]; the contribution is the conservative, auditable
-workflow wrapped around it, so that the same checks travel with every analysis.
-EpiNet is a research and education demonstrator, not clinical decision support.
+than to introduce a new predictive algorithm. The default predictor is a
+standard random forest [@scikit-learn], with scaled regularized logistic
+regression and optional XGBoost [@xgboost] available as alternatives; the
+contribution is the conservative, auditable workflow wrapped around the
+estimator, so that the same checks travel with every analysis. EpiNet is a
+research and education demonstrator, not clinical decision support.
 
 # Statement of need
 
@@ -46,15 +50,16 @@ Small biomedical and registry cohorts make over-fitting easy and over-claiming
 easier. General-purpose libraries make it trivial to report a single
 cross-validated accuracy that in fact reflects leakage or chance, and to ship a
 risk score that discriminates well but is badly calibrated. EpiNet is built
-around those failure modes: leakage-aware (community) splitting, a permutation
-null measured against chance, calibration reported alongside discrimination,
-honest within- and across-split uncertainty [@nadeau2003], and a closed-form
-contestability measure — the smallest feature-space move that flips a
-nearest-centroid call [@tibshirani2002], with a value-of-information ranking of
-which measurement would settle it. The need it addresses is methodological
-reproducibility, not predictive performance: it standardizes *how an evaluation
-is conducted and reported* so the same conservative checks are applied uniformly
-and emitted as an auditable record, rather than re-implemented ad hoc per study.
+around those failure modes: leakage-aware (community) splitting, optional but
+integrated label-permutation nulls measured against chance, calibration reported
+alongside discrimination, honest within- and across-split uncertainty
+[@nadeau2003], and a closed-form contestability measure — the smallest
+feature-space move that flips a nearest-centroid call [@tibshirani2002], with a
+value-of-information ranking of which measurement would settle it. The need it
+addresses is methodological reproducibility, not predictive performance: it
+standardizes *how an evaluation is conducted and reported* so the same
+conservative checks are available through one auditable workflow, rather than
+re-implemented ad hoc per study.
 
 # State of the field
 
@@ -67,36 +72,42 @@ distributed analysis by federated frameworks
 such as DataSHIELD [@datashield] and federated-learning libraries [@rieke2020].
 EpiNet is *not* better at graph algorithms than NetworkX nor at modelling than
 scikit-learn, and it introduces no new learning algorithm. Its contribution is
-the opinionated integration of graph-shaped tabular analysis, conservative
-leakage-aware evaluation, nearest-centroid contestability, and an exactly
-federatable analytic spine into one small, auditable tool for cohorts where the
-dominant failure modes are leakage, calibration error, unstable estimates, and
-overconfident boundary calls. No single existing package combines these defaults
-for this setting; the pieces EpiNet reuses are dependencies, not reimplementations.
+the opinionated integration of graph-shaped tabular analysis, leakage-aware
+evaluation, nearest-centroid contestability, and an exactly federatable analytic
+spine into one small, auditable tool for cohorts where the dominant failure
+modes are leakage, calibration error, unstable estimates, and overconfident
+boundary calls. No single existing package combines these checks for this
+setting while also writing the human-readable model card, claims check,
+provenance, figures, and machine-readable outputs from the same run; the pieces
+EpiNet reuses are dependencies, not reimplementations.
 
 # Software design
 
-EpiNet uses a small namespaced module layout (`vahtian/epinet/`) and CSV inputs to
-keep the analysis inspectable, and favours conservative defaults over
-configurability: every run emits discrimination, calibration, a null-model
-comparison, bootstrap intervals, warnings, and provenance with no extra opt-in. A
-graphical workbench offers the same analysis without the command line — each
-session emits a complete `analysis.yaml` and executes through the identical
-engine, so the interface is never the source of truth and any result it produces
-can be reproduced without it. Safety gates block ill-posed runs (no or
-single-class outcome, an identifier used as a feature) and downgrade
-under-powered cohorts to a descriptive report rather than fabricating metrics.
+EpiNet uses a small namespaced module layout (`vahtian/epinet/`) and CSV inputs
+to keep the analysis inspectable, and favours conservative run records over
+large configuration surfaces: the CLI writes discrimination, calibration,
+repeated-split summaries, bootstrap intervals, warnings, and provenance, while
+the example and Workbench workflows add the label-permutation null that tests
+the headline score against chance. A graphical workbench offers the same
+analysis without the command line — each session emits a complete
+`analysis.yaml` and executes through the identical engine, so the interface is
+never the source of truth and any result it produces can be reproduced without
+it. Safety gates block ill-posed runs (no or single-class outcome, an identifier
+used as a feature) and downgrade under-powered cohorts to a descriptive report
+rather than fabricating metrics.
 
-Two design decisions follow from the optional federated mode. The outcome model
-(a random forest) sits deliberately *outside* the federated spine, since tree
-ensembles do not combine exactly from additive site summaries. The
+Two design decisions follow from the optional federated mode. The supervised
+outcome estimator sits deliberately *outside* the federated spine, since fitted
+predictive models such as tree ensembles and regularized regressions do not
+combine exactly from additive site summaries. The
 nearest-centroid contestability layer, by contrast, has additive sufficient
-statistics — scaler, class centroids, and shared-covariance precision reconstruct
-*exactly* from per-site counts, sums, sums of squares, and second-moment matrices
-— so the unshrunk-empirical analytic is exactly federatable while record-level
-data stay local. Covariance shrinkage (Ledoit–Wolf [@ledoit2004]) is available
-centrally; reproducing it federated would need fourth-moment aggregates and is
-documented as a limitation, not a feature.
+statistics: the global scaler, class centroids, and empirical shared covariance
+reconstruct from per-site counts, sums, centered sums of squares, and centered
+co-moment matrices. The unshrunk empirical analytic is therefore exactly
+federatable while record-level data stay local. When the Mahalanobis precision
+needs regularisation, EpiNet also supports opt-in fixed shrinkage or
+aggregate-computable Oracle Approximating Shrinkage [@chen2010] toward the
+identity, using the pooled covariance rather than record-level data.
 
 The contestability layer is offered as a software diagnostic for triage and
 review — the flip-distance and value-of-information ranking are exact properties
@@ -137,8 +148,7 @@ launched.
 ![Label-permutation null from the example run: the histogram is weighted F1 under
 100 random label permutations (the no-signal reference) and the line is the
 observed score. The separation (here $p = 0.01$) is what distinguishes real
-signal from chance, and it is emitted by
-default.\label{fig:permnull}](permutation_null.png){ width=70% }
+signal from chance in the example workflow.\label{fig:permnull}](permutation_null.png){ width=70% }
 
 # Research impact statement
 
@@ -147,7 +157,7 @@ The repository ships runnable demonstrations on synthetic and small
 biomedical-style cohorts (nodule risk, lymphoma subtyping, a registry adapter,
 federated contestability, governance-mediated egress), representation baselines
 including a learned node-embedding comparison, and an external-validation harness.
-The v0.4.1 release — installable from PyPI as `vahtian-epinet`, with an R
+The v0.4.2 release — installable from PyPI as `vahtian-epinet`, with an R
 interface wrapping the same tested core through reticulate — freezes these as a
 citation snapshot with CI-tested examples (Python 3.10–3.12). Its near-term value
 is an executable reference workflow for catching leakage, chance-level
@@ -156,12 +166,12 @@ are drawn from small cohorts.
 
 # AI usage disclosure
 
-Generative AI assistance (Anthropic Claude) was used for code drafting and
-refactoring, documentation, and manuscript preparation. All AI-assisted changes
-were reviewed by the author, exercised through the automated test suite, checked
-against documented statistical identities where applicable (for example, the
-closed-form flip-distance and the additive reconstruction of the scaler and
-centroids), and revised before release.
+Generative AI assistance was used for code drafting and refactoring,
+documentation, and manuscript preparation. All AI-assisted changes were reviewed
+by the author, exercised through the automated test suite, checked against
+documented statistical identities where applicable (for example, the closed-form
+flip-distance and the additive reconstruction of the scaler and centroids), and
+revised before release.
 
 # Acknowledgements
 

@@ -38,6 +38,9 @@
 #' @param random_state Integer seed (default 42).
 #' @param tune_threshold Tune the decision threshold on out-of-bag training
 #'   scores instead of 0.5 (binary outcomes; default FALSE).
+#' @param model Primary estimator: `"random_forest"` (default),
+#'   `"logistic_regression"`, or `"xgboost"` (requires the Python `xgboost`
+#'   package).
 #' @return An object of class `"epinet"`: a list with `outcome`, `predictors`,
 #'   `features_used`, `n`, `metrics`, and `importance`. Use [summary.epinet()],
 #'   [plot.epinet()], and [print.epinet()].
@@ -50,11 +53,13 @@
 #' @export
 epinet <- function(data, outcome, predictors = NULL,
                    n_iterations = 1L, n_permutations = 0L, n_bootstrap = 1000L,
-                   test_size = 0.2, random_state = 42L, tune_threshold = FALSE) {
+                   test_size = 0.2, random_state = 42L, tune_threshold = FALSE,
+                   model = c("random_forest", "logistic_regression", "xgboost")) {
   if (!is.data.frame(data)) stop("`data` must be a data frame", call. = FALSE)
   if (!is.character(outcome) || length(outcome) != 1L) {
     stop("`outcome` must be a single column name", call. = FALSE)
   }
+  model <- match.arg(model)
   if (is.null(predictors)) predictors <- setdiff(names(data), outcome)
   api <- .epinet_api()
   res <- api$fit(
@@ -66,7 +71,8 @@ epinet <- function(data, outcome, predictors = NULL,
     n_bootstrap = as.integer(n_bootstrap),
     test_size = as.numeric(test_size),
     random_state = as.integer(random_state),
-    tune_threshold = isTRUE(tune_threshold)
+    tune_threshold = isTRUE(tune_threshold),
+    model = model
   )
   structure(res, class = "epinet")
 }
@@ -77,7 +83,10 @@ epinet <- function(data, outcome, predictors = NULL,
 #' @export
 print.epinet <- function(x, ...) {
   m <- x$metrics
-  cat(sprintf("EpiNet outcome model  (n = %d, outcome = '%s')\n", x$n, x$outcome))
+  model <- if (!is.null(x$model)) x$model else m[["model_name"]]
+  if (is.null(model)) model <- "random_forest"
+  cat(sprintf("EpiNet outcome model  (n = %d, outcome = '%s', model = '%s')\n",
+              x$n, x$outcome, model))
   cat(sprintf("  predictors: %s\n", paste(x$predictors, collapse = ", ")))
   bits <- c()
   if (!is.null(m[["roc_auc"]])) bits <- c(bits, sprintf("AUROC %.3f", m[["roc_auc"]]))

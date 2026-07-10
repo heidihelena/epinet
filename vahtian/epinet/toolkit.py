@@ -12,6 +12,7 @@ assumption.
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import math
 import warnings
@@ -21,10 +22,11 @@ from typing import Iterable
 import networkx as nx
 import numpy as np
 import pandas as pd
-from sklearn.base import clone
+from sklearn.base import BaseEstimator, ClassifierMixin, clone
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.inspection import permutation_importance
+from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (
     accuracy_score,
     average_precision_score,
@@ -36,7 +38,8 @@ from sklearn.metrics import (
     roc_auc_score,
 )
 from sklearn.model_selection import GridSearchCV, GroupShuffleSplit, learning_curve, train_test_split
-from sklearn.preprocessing import label_binarize
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import LabelEncoder, StandardScaler, label_binarize
 
 from vahtian.epinet import common as epinet_common
 
@@ -55,6 +58,83 @@ HIGHER_IS_BETTER = LABEL_METRICS + ("roc_auc", "average_precision")
 LOWER_IS_BETTER = ("brier",)
 # Every metric reported per evaluation iteration, in display order.
 ALL_METRICS = HIGHER_IS_BETTER + LOWER_IS_BETTER
+MODEL_CHOICES = ("random_forest", "logistic_regression", "xgboost")
+
+
+class XGBoostLabelEncodedClassifier(BaseEstimator, ClassifierMixin):
+    """Small sklearn-compatible XGBoost wrapper that accepts arbitrary labels.
+
+    ``xgboost.XGBClassifier`` has varied across releases in how permissively it
+    accepts string/category labels.  EpiNet's outcomes are often read from CSVs,
+    so keep a stable wrapper: encode labels on fit, expose the original
+    ``classes_`` order, and decode predictions on the way out.
+    """
+
+    def __init__(
+        self,
+        n_estimators: int = 200,
+        max_depth: int = 3,
+        learning_rate: float = 0.05,
+        subsample: float = 0.9,
+        colsample_bytree: float = 0.9,
+        reg_lambda: float = 1.0,
+        random_state: int = 42,
+        n_jobs: int = 1,
+    ):
+        self.n_estimators = n_estimators
+        self.max_depth = max_depth
+        self.learning_rate = learning_rate
+        self.subsample = subsample
+        self.colsample_bytree = colsample_bytree
+        self.reg_lambda = reg_lambda
+        self.random_state = random_state
+        self.n_jobs = n_jobs
+
+    def fit(self, X, y):
+        try:
+            from xgboost import XGBClassifier
+        except ImportError as exc:
+            raise ImportError(
+                "The xgboost estimator requires the optional dependency. "
+                "Install it with `pip install vahtian-epinet[xgboost]` or "
+                "`pip install xgboost`."
+            ) from exc
+
+        self._label_encoder = LabelEncoder()
+        y_enc = self._label_encoder.fit_transform(y)
+        self.classes_ = self._label_encoder.classes_
+        objective = "binary:logistic" if len(self.classes_) == 2 else "multi:softprob"
+        eval_metric = "logloss" if len(self.classes_) == 2 else "mlogloss"
+        kwargs = {
+            "n_estimators": self.n_estimators,
+            "max_depth": self.max_depth,
+            "learning_rate": self.learning_rate,
+            "subsample": self.subsample,
+            "colsample_bytree": self.colsample_bytree,
+            "reg_lambda": self.reg_lambda,
+            "objective": objective,
+            "eval_metric": eval_metric,
+            "random_state": self.random_state,
+            "n_jobs": self.n_jobs,
+            "verbosity": 0,
+        }
+        if len(self.classes_) > 2:
+            kwargs["num_class"] = len(self.classes_)
+        self._model = XGBClassifier(**kwargs)
+        self._model.fit(X, y_enc)
+        self.n_features_in_ = getattr(self._model, "n_features_in_", None)
+        return self
+
+    def predict_proba(self, X):
+        return self._model.predict_proba(X)
+
+    def predict(self, X):
+        pred = np.asarray(self._model.predict(X), dtype=int)
+        return self._label_encoder.inverse_transform(pred)
+
+    @property
+    def feature_importances_(self):
+        return getattr(self._model, "feature_importances_", None)
 
 
 def split_csv_list(value: str | None) -> list[str]:
@@ -347,17 +427,115 @@ def _tune_threshold(y_bin: np.ndarray, oob_pos: np.ndarray) -> float:
     return best_t
 
 
+def _model_display_name(model_name: str) -> str:
+    return {
+        "random_forest": "RandomForestClassifier",
+        "logistic_regression": "LogisticRegression",
+        "xgboost": "XGBoostClassifier",
+    }.get(model_name, model_name)
+
+
+def _build_estimator(model_name: str, *, random_state: int) -> tuple[BaseEstimator, dict[str, list[object]]]:
+    """Return the base estimator and hyperparameter grid for ``model_name``."""
+    if model_name not in MODEL_CHOICES:
+        raise ValueError(f"model must be one of {MODEL_CHOICES}, got {model_name!r}")
+    if model_name == "random_forest":
+        return (
+            RandomForestClassifier(random_state=random_state, n_jobs=1),
+            {
+                "n_estimators": [100, 200],
+                "max_depth": [None, 5, 10],
+                "class_weight": [None, "balanced", "balanced_subsample"],
+                "min_samples_leaf": [1, 3],
+            },
+        )
+    if model_name == "logistic_regression":
+        return (
+            Pipeline(
+                [
+                    ("scaler", StandardScaler()),
+                    (
+                        "model",
+                        LogisticRegression(
+                            solver="lbfgs",
+                            max_iter=2000,
+                            random_state=random_state,
+                        ),
+                    ),
+                ]
+            ),
+            {
+                "model__C": [0.1, 1.0, 10.0],
+                "model__class_weight": [None, "balanced"],
+            },
+        )
+    if importlib.util.find_spec("xgboost") is None:
+        raise ImportError(
+            "The xgboost estimator requires the optional dependency. "
+            "Install it with `pip install vahtian-epinet[xgboost]` or `pip install xgboost`."
+        )
+    return (
+        XGBoostLabelEncodedClassifier(random_state=random_state, n_jobs=1),
+        {
+            "n_estimators": [100, 200],
+            "max_depth": [2, 4],
+            "learning_rate": [0.05, 0.1],
+            "subsample": [0.8, 1.0],
+        },
+    )
+
+
+def _clone_with_random_state(model: BaseEstimator, random_state: int, **extra) -> BaseEstimator:
+    """Clone an estimator and set random-state-like params only when present."""
+    fitted = clone(model)
+    params = fitted.get_params()
+    updates: dict[str, object] = {}
+    for key in ("random_state", "model__random_state"):
+        if key in params:
+            updates[key] = random_state
+    for key, value in extra.items():
+        if key in params:
+            updates[key] = value
+        else:
+            raise ValueError(f"Estimator {fitted.__class__.__name__} does not support parameter {key!r}")
+    if updates:
+        fitted = fitted.set_params(**updates)
+    return fitted
+
+
+def _intrinsic_importance(model: BaseEstimator, n_features: int) -> tuple[np.ndarray, str]:
+    """Return a model-native importance vector when available.
+
+    The primary feature-importance output remains held-out permutation
+    importance.  This secondary vector preserves the old RF impurity column and
+    gives logistic regression/XGBoost a comparable model-native diagnostic.
+    """
+    candidate = model
+    if isinstance(model, Pipeline):
+        candidate = model.steps[-1][1]
+    if hasattr(candidate, "feature_importances_") and getattr(candidate, "feature_importances_") is not None:
+        return np.asarray(candidate.feature_importances_, dtype=float), "impurity"
+    if hasattr(candidate, "coef_"):
+        coef = np.asarray(candidate.coef_, dtype=float)
+        if coef.ndim == 1:
+            values = np.abs(coef)
+        else:
+            values = np.mean(np.abs(coef), axis=0)
+        return values, "absolute_coefficient"
+    return np.zeros(n_features, dtype=float), "none"
+
+
 def _split_and_score(
     X: pd.DataFrame,
     y: pd.Series,
-    model: RandomForestClassifier,
+    model: BaseEstimator,
     *,
     test_size: float,
     random_state: int,
     stratify_ok: bool,
     groups: pd.Series | None = None,
     tune_threshold: bool = False,
-) -> tuple[RandomForestClassifier, dict[str, object], pd.Series, pd.Series, np.ndarray]:
+) -> tuple[BaseEstimator, dict[str, object], pd.Series, pd.Series, np.ndarray]:
     train_idx, test_idx = _split_indices(
         X,
         y,
@@ -381,7 +559,7 @@ def _split_and_score(
         # OOB coverage can be partial on small/imbalanced folds; the threshold
         # tuner already masks rows without an OOB score, so silence the notice.
         warnings.filterwarnings("ignore", message="Some inputs do not have OOB scores")
-        fitted = clone(model).set_params(random_state=random_state, **extra).fit(X_train, y_train)
+        fitted = _clone_with_random_state(model, random_state, **extra).fit(X_train, y_train)
     proba = fitted.predict_proba(X_test)
     classes_ = fitted.classes_
 
@@ -420,7 +598,7 @@ def _split_and_score(
 
 
 def _calibrated_proba(
-    model: RandomForestClassifier,
+    model: BaseEstimator,
     X_train: pd.DataFrame,
     y_train: pd.Series,
     X_test: pd.DataFrame,
@@ -428,11 +606,11 @@ def _calibrated_proba(
     *,
     random_state: int,
 ) -> np.ndarray | None:
-    """Platt-scaled (sigmoid) probabilities for the tuned forest, or ``None``.
+    """Platt-scaled (sigmoid) probabilities for the tuned estimator, or ``None``.
 
-    Random forests are typically over-confident: their vote-share probabilities
-    are too extreme, which the calibration slope (< 1) exposes. Refitting the
-    tuned model inside ``CalibratedClassifierCV`` maps those scores toward
+    Tree ensembles are often over-confident, and any estimator can be
+    miscalibrated on a small cohort. Refitting the tuned model inside
+    ``CalibratedClassifierCV`` maps those scores toward
     observed event frequencies. Sigmoid (Platt) rather than isotonic because the
     cohorts here are small and isotonic overfits the calibration set. Returns
     ``None`` when the minority class is too small to cross-validate the
@@ -441,7 +619,7 @@ def _calibrated_proba(
     k = int(min(5, y_train.value_counts().min()))
     if k < 2:
         return None
-    estimator = clone(model).set_params(random_state=random_state)
+    estimator = _clone_with_random_state(model, random_state)
     calibrated = CalibratedClassifierCV(estimator, method="sigmoid", cv=k)
     calibrated.fit(X_train, y_train)
     proba = calibrated.predict_proba(X_test)
@@ -586,6 +764,7 @@ def train_outcome_model(
     n_permutations: int = 0,
     n_bootstrap: int = 1000,
     tune_threshold: bool = False,
+    model_name: str = "random_forest",
     provenance: dict[str, object] | None = None,
 ) -> dict[str, object]:
     """Fit and evaluate the outcome model, optionally over repeated splits.
@@ -595,14 +774,12 @@ def train_outcome_model(
     splits (seeds ``random_state .. random_state + n_iterations - 1``) and the
     summary reports the mean, standard deviation, and range of each metric.
     Hyperparameters are tuned once on the primary split and held fixed across
-    iterations so the loop measures split variance, not tuning variance. Tuning
-    is imbalance-aware: the grid includes ``class_weight`` and the selection
-    metric is ``balanced_accuracy``, so a skewed outcome (the common
-    epidemiological case) does not collapse the model toward the majority class.
-    On balanced data the search selects ``class_weight=None`` and the behaviour
-    is unchanged. The grid also tunes ``min_samples_leaf`` to regularize trees on
-    small, noisy cohorts; being cross-validation-selected, it only grows the leaf
-    when that improves held-out balanced accuracy.
+    iterations so the loop measures split variance, not tuning variance.
+    ``model_name`` selects the estimator: ``random_forest`` (default nonlinear
+    tabular model), ``logistic_regression`` (scaled regularized comparator), or
+    ``xgboost`` (optional dependency). The tuning grids are intentionally small
+    and scored by ``balanced_accuracy`` so skewed outcomes do not collapse the
+    model toward the majority class.
 
     Nodes whose outcome is blank/NaN are treated as unlabeled scaffold: they
     contribute to the graph features but are excluded from training and
@@ -642,6 +819,10 @@ def train_outcome_model(
         raise ValueError("n_iterations must be at least 1")
     if n_permutations < 0:
         raise ValueError("n_permutations must be non-negative")
+    if model_name not in MODEL_CHOICES:
+        raise ValueError(f"model_name must be one of {MODEL_CHOICES}, got {model_name!r}")
+    if tune_threshold and model_name != "random_forest":
+        raise ValueError("tune_threshold currently requires model_name='random_forest' (OOB scores)")
 
     X = build_design_matrix(features, nodes, id_column=id_column, outcome_column=outcome_column)
 
@@ -687,32 +868,17 @@ def train_outcome_model(
     X_train, y_train = X.iloc[train_idx], y.iloc[train_idx]
     min_train_class = y_train.value_counts().min()
     cv = min(5, int(min_train_class))
-    base_model = RandomForestClassifier(random_state=random_state, n_jobs=1)
+    base_model, param_grid = _build_estimator(model_name, random_state=random_state)
 
     if cv >= 2:
         # Imbalance-aware model selection. Epidemiological outcomes are usually
-        # skewed, where the default unweighted forest collapses toward the
-        # majority class. Tuning ``class_weight`` lets the search learn to weight
-        # the minority, but only if the selection metric rewards it: a
-        # support-weighted score (e.g. f1_weighted) is dominated by the majority
-        # and never picks the weighting, so the scorer is ``balanced_accuracy``
-        # (unweighted mean recall across classes). On already-balanced data the
-        # search simply selects ``class_weight=None`` and this reduces to the
-        # previous behaviour.
-        #
-        # ``min_samples_leaf`` is tuned too: fully-grown trees overfit the small,
-        # noisy cohorts this toolkit targets, and a larger leaf is a standard
-        # regularizer. It is cross-validation-guarded — the search only selects a
-        # leaf size > 1 when it improves held-out balanced accuracy, so it cannot
-        # degrade the selected model and stays at 1 (the default) otherwise.
+        # skewed, where a default model may collapse toward the majority class.
+        # Grids expose estimator-specific regularization/weighting knobs where
+        # available (e.g. class_weight for RF/logistic, leaf size for RF) and use
+        # balanced_accuracy so minority recall can affect selection.
         search = GridSearchCV(
             base_model,
-            {
-                "n_estimators": [100, 200],
-                "max_depth": [None, 5, 10],
-                "class_weight": [None, "balanced", "balanced_subsample"],
-                "min_samples_leaf": [1, 3],
-            },
+            param_grid,
             cv=cv,
             n_jobs=1,
             scoring="balanced_accuracy",
@@ -727,7 +893,7 @@ def train_outcome_model(
     # Iterative evaluation: re-split and re-fit with the tuned configuration.
     iteration_rows: list[dict[str, object]] = []
     impurity_runs: list[np.ndarray] = []
-    primary_fit: RandomForestClassifier | None = None
+    primary_fit: BaseEstimator | None = None
     primary_truth: pd.Series | None = None
     primary_predictions: pd.Series | None = None
     primary_proba: np.ndarray | None = None
@@ -744,7 +910,7 @@ def train_outcome_model(
         )
         row["iteration"] = i
         iteration_rows.append(row)
-        impurity_runs.append(fitted.feature_importances_)
+        impurity_runs.append(_intrinsic_importance(fitted, X.shape[1])[0])
         if i == 0:
             primary_fit = fitted
             primary_truth = truth
@@ -782,6 +948,8 @@ def train_outcome_model(
     metrics.update(
         {
             "best_params": best_params,
+            "model_name": model_name,
+            "estimator": _model_display_name(model_name),
             "n_iterations": n_iterations,
             "split_strategy": "community" if groups is not None else "random",
             "labeled_rows": int(len(y)),
@@ -859,8 +1027,8 @@ def train_outcome_model(
         raw_cal = calibration_slope_intercept(primary_truth, primary_proba[:, 1], pos_label)
         raw_brier = _first("brier")
 
-        # Probability calibration. The forest's raw scores are usually
-        # over-confident (slope < 1). Platt-scale them, but ADOPT the calibrated
+        # Probability calibration. Raw scores can be miscalibrated (often
+        # over-confident, slope < 1). Platt-scale them, but ADOPT the calibrated
         # probabilities only when they actually lower held-out Brier, so a
         # calibrator that overfits a thin minority class can never make the
         # reported risk worse. Discrimination (argmax predictions, AUROC) is
@@ -964,8 +1132,17 @@ def train_outcome_model(
     # (less biased than impurity, and computed on data the model did not train
     # on). Impurity importance is retained for reference. The primary-split
     # indices were computed once above and are reused here.
-    impurity_mean = np.vstack(impurity_runs).mean(axis=0)
-    importance = pd.DataFrame({"feature": X.columns, "impurity_importance": impurity_mean})
+    intrinsic_mean = np.vstack(impurity_runs).mean(axis=0)
+    intrinsic_kind = _intrinsic_importance(primary_fit, X.shape[1])[1]
+    importance = pd.DataFrame(
+        {
+            "feature": X.columns,
+            "intrinsic_importance": intrinsic_mean,
+            # Backward-compatible alias retained for downstream readers that
+            # expect the historical RF impurity column.
+            "impurity_importance": intrinsic_mean,
+        }
+    )
     importance_kind = "permutation"
     try:
         perm = permutation_importance(
@@ -975,13 +1152,14 @@ def train_outcome_model(
         importance["importance"] = perm.importances_mean
         importance["importance_std"] = perm.importances_std
     except (ValueError, RuntimeError):
-        # Fallback: impurity importance with cross-iteration spread.
-        importance_kind = "impurity"
-        importance["importance"] = impurity_mean
+        # Fallback: model-native importance with cross-iteration spread.
+        importance_kind = "intrinsic"
+        importance["importance"] = intrinsic_mean
         importance["importance_std"] = np.vstack(impurity_runs).std(axis=0, ddof=1) \
             if n_iterations > 1 else 0.0
     importance = importance.sort_values("importance", ascending=False)
     metrics["importance_kind"] = importance_kind
+    metrics["intrinsic_importance_kind"] = intrinsic_kind
 
     # Permutation null model. Each permutation is evaluated with the SAME
     # multi-iteration averaging as the observed score, so the null and the
@@ -1390,6 +1568,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             n_permutations=getattr(args, "permutation_test", 0),
             n_bootstrap=getattr(args, "n_bootstrap", 1000),
             tune_threshold=getattr(args, "tune_threshold", False),
+            model_name=getattr(args, "model", "random_forest"),
             provenance=prov,
         )
         summary["model"] = model_result["metrics"]
@@ -1526,6 +1705,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--directed", action="store_true", help="Treat edges as directed SourceID -> TargetID")
     parser.add_argument("--include-centrality", action="store_true", help="Add betweenness, closeness, and PageRank features")
     parser.add_argument("--run-model", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument(
+        "--model",
+        choices=MODEL_CHOICES,
+        default="random_forest",
+        help=(
+            "Outcome-model estimator: random_forest (default), "
+            "logistic_regression (scaled regularized comparator), or xgboost "
+            "(requires optional dependency)"
+        ),
+    )
     parser.add_argument("--run-paths", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument(
         "--run-clusters",

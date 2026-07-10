@@ -1,3 +1,4 @@
+import importlib.util
 import json
 import sys
 import tempfile
@@ -932,6 +933,40 @@ class ScientificStandardsTests(unittest.TestCase):
             # The grid also regularizes via min_samples_leaf.
             self.assertIn("min_samples_leaf", best)
             self.assertIn(best["min_samples_leaf"], [1, 3])
+
+    def test_logistic_regression_model_is_selectable(self):
+        nodes, features = self._binary_cohort()
+        with tempfile.TemporaryDirectory() as td:
+            result = et.train_outcome_model(
+                nodes, features, id_column="ID", outcome_column="Outcome",
+                output_dir=Path(td), n_iterations=1, n_bootstrap=0,
+                model_name="logistic_regression",
+            )
+            m = result["metrics"]
+            self.assertEqual(m["model_name"], "logistic_regression")
+            self.assertEqual(m["estimator"], "LogisticRegression")
+            self.assertIn("model__C", m["best_params"])
+            self.assertEqual(m["intrinsic_importance_kind"], "absolute_coefficient")
+            self.assertIn("intrinsic_importance", result["importance"].columns)
+
+    def test_xgboost_model_is_optional_and_selectable(self):
+        nodes, features = self._binary_cohort(n=80)
+        with tempfile.TemporaryDirectory() as td:
+            if importlib.util.find_spec("xgboost") is None:
+                with self.assertRaises(ImportError):
+                    et.train_outcome_model(
+                        nodes, features, id_column="ID", outcome_column="Outcome",
+                        output_dir=Path(td), n_iterations=1, n_bootstrap=0,
+                        model_name="xgboost",
+                    )
+            else:
+                result = et.train_outcome_model(
+                    nodes, features, id_column="ID", outcome_column="Outcome",
+                    output_dir=Path(td), n_iterations=1, n_bootstrap=0,
+                    model_name="xgboost",
+                )
+                self.assertEqual(result["metrics"]["model_name"], "xgboost")
+                self.assertEqual(result["metrics"]["estimator"], "XGBoostClassifier")
 
     def test_multiclass_calibration_block_is_present_and_honest(self):
         # Calibration must not be silently absent for multiclass: Brier is
@@ -1975,6 +2010,16 @@ class RApiAdapterTests(unittest.TestCase):
         self.assertTrue(res["importance"])  # non-empty per-feature records
         # Result must be JSON-serializable (it crosses the language boundary).
         json.dumps(res)
+
+    def test_fit_accepts_logistic_regression_model(self):
+        from vahtian.epinet import r_api
+        data = self._table()
+        res = r_api.fit(
+            data, outcome="copd", predictors=["age", "sex", "smoking"],
+            n_iterations=1, n_bootstrap=0, model="logistic_regression",
+        )
+        self.assertEqual(res["model"], "logistic_regression")
+        self.assertEqual(res["metrics"]["model_name"], "logistic_regression")
 
     def test_fit_validates_columns_and_outcome(self):
         from vahtian.epinet import r_api

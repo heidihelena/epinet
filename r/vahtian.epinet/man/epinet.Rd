@@ -8,7 +8,8 @@
 \usage{
 epinet(data, outcome, predictors = NULL, n_iterations = 1L,
   n_permutations = 0L, n_bootstrap = 1000L, test_size = 0.2,
-  random_state = 42L, tune_threshold = FALSE)
+  random_state = 42L, tune_threshold = FALSE,
+  model = c("random_forest", "logistic_regression", "xgboost"))
 
 \method{print}{epinet}(x, ...)
 
@@ -37,6 +38,10 @@ disables (default 1000).}
 
 \item{tune_threshold}{Tune the decision threshold on out-of-bag training
 scores instead of 0.5 (binary outcomes; default FALSE).}
+
+\item{model}{Primary estimator: \code{"random_forest"} (default),
+\code{"logistic_regression"}, or \code{"xgboost"} (requires the Python
+\code{xgboost} package).}
 
 \item{x, object}{An \code{"epinet"} object.}
 
