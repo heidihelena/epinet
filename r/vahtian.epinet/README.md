@@ -43,7 +43,8 @@ library(vahtian.epinet)
 result <- epinet(
   data,
   outcome    = "copd",
-  predictors = c("age", "sex", "smoking")
+  predictors = c("age", "sex", "smoking"),
+  model      = "random_forest" # or "logistic_regression"; "xgboost" if installed
 )
 
 summary(result)   # discrimination, calibration, bootstrap CI, data warnings
@@ -52,9 +53,10 @@ print(result)     # one-line headline
 ```
 
 `epinet()` builds a design matrix from the predictors (one-hot encoding
-non-numeric ones) and fits the outcome model with EpiNet's honest-evaluation
-defaults: imbalance-aware tuning, calibration (Brier + slope/intercept), a
-percentile bootstrap interval, an optional label-permutation null
+non-numeric ones) and fits the selected outcome model (RandomForest by default,
+scaled regularized logistic regression, or optional XGBoost) with EpiNet's
+honest-evaluation defaults: imbalance-aware tuning, calibration (Brier +
+slope/intercept), a percentile bootstrap interval, an optional label-permutation null
 (`n_permutations`), and permutation feature importance.
 
 The returned object is a plain list (class `"epinet"`) with `metrics`,

@@ -328,6 +328,7 @@ def _config_to_args(config: AnalysisConfig, nodes_path: str, edges_path: str, ru
         directed=False,
         include_centrality=a.graph.include_centrality,
         run_model=run_model,
+        model=a.model.primary,
         run_paths=run_paths,
         run_clusters=True,
         n_clusters=0,
@@ -378,6 +379,7 @@ def _split_comparison(config: AnalysisConfig, nodes_path: str, edges_path: str) 
             output_dir=target, test_size=config.analysis.split.test_size,
             random_state=config.analysis.split.random_state,
             n_iterations=n_iter, groups=groups, n_permutations=0, n_bootstrap=0,
+            model_name=config.analysis.model.primary,
         )["metrics"]
         out = {k: metrics.get(k) for k in keep}
         # Per-split AUROC spread across re-splits, so the claims check can tell a
@@ -483,6 +485,7 @@ def run_config(config: AnalysisConfig, *, skip_gates: bool = False) -> dict:
                 id_column=config.schema.id_column,
                 outcome_column=config.schema.outcome_column,
                 random_state=config.analysis.split.random_state,
+                model_name=config.analysis.model.primary,
                 output_dir=output_dir,
             )
             summary["external_validation"] = "external_validation.json"

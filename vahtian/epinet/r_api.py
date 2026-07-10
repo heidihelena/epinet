@@ -76,9 +76,12 @@ def fit(
     test_size: float = 0.2,
     random_state: int = 42,
     tune_threshold: bool = False,
+    model: str = "random_forest",
 ) -> dict:
     """Fit EpiNet's honest outcome model on a flat table.
 
+    ``model`` selects the same estimator backends as the CLI:
+    ``random_forest``, ``logistic_regression``, or optional ``xgboost``.
     Returns a dict with ``outcome``, ``predictors``, ``features_used``, ``n``,
     the full ``metrics`` summary (discrimination, classification, calibration,
     bootstrap CI, permutation null, data warnings), and ``importance``.
@@ -104,6 +107,7 @@ def fit(
             test_size=test_size,
             random_state=random_state,
             tune_threshold=tune_threshold,
+            model_name=model,
         )
 
     return {
@@ -112,6 +116,7 @@ def fit(
         "features_used": features_used,
         "n": int(len(X_enc)),
         "metrics": result["metrics"],
+        "model": model,
         "importance": result["importance"].to_dict(orient="records"),
     }
 

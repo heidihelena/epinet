@@ -28,10 +28,11 @@ site and recovers **exactly** what a centralized run would compute. Centering
 each site's moments *before* they cross avoids the catastrophic cancellation of
 `Σx² ⁄ n − μ²` — without it the reconstructed standard deviation drifts by
 ~1e-4 on a feature whose mean dwarfs its spread; with it the fit matches the
-centralized scaler to floating-point precision. The RandomForest
-outcome model is *not* mean-poolable (trees cannot be averaged) and is out of
-scope — the federatable part is precisely the centroid/contestability spine,
-EpiNet's differentiated lens. This is the
+centralized scaler to floating-point precision. The supervised outcome estimator
+is *not* mean-poolable (fitted predictors cannot be reconstructed exactly from
+these additive summaries) and is out of scope — the federatable part is
+precisely the centroid/contestability spine, EpiNet's differentiated lens. This
+is the
 [DataSHIELD](https://doi.org/10.1093/ije/dyu188) "take the analysis to the data"
 principle, extended to the contestability analytic.
 
