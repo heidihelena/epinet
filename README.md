@@ -82,8 +82,9 @@ Ki67, …). The same lens runs on any cohort. More figures in
   isolate flag, optional betweenness/closeness/PageRank.
 - **Honest outcome model** — selectable estimator over graph features + node
   attributes: RandomForest by default, scaled regularized logistic regression as
-  an interpretable comparator, or optional XGBoost (`pip install
-  "vahtian-epinet[xgboost]"`). Every option uses the same evaluation harness:
+  an interpretable comparator, optional XGBoost (`pip install
+  "vahtian-epinet[xgboost]"`), or an optional tiny PyTorch MLP (`pip install
+  "vahtian-epinet[torch]"`). Every option uses the same evaluation harness:
   discrimination (AUROC, AUPRC), classification (balanced accuracy, MCC, F1),
   **calibration** (Brier always; slope/intercept for binary outcomes), bootstrap
   CIs, permutation importance, a label-permutation null, community-aware
@@ -98,6 +99,9 @@ Ki67, …). The same lens runs on any cohort. More figures in
   value-of-information ranking. See [docs/methods.md](docs/methods.md).
 - **Input normalization** — maps common column aliases onto the schema before
   validation; never silently (every rename logged, raw + normalized hashed).
+- **Epistemic claim gates** — graph semantics and timing are recorded so a
+  similarity graph is not mistaken for observed social, clinical, or exposure
+  relations. See [docs/epistemic-science.md](docs/epistemic-science.md).
 - **Federated pipeline** (*optional*) — reconstruct the scaler, centroids, and
   contestability from per-site aggregates only, behind a fail-closed governance
   gate. See
@@ -127,6 +131,7 @@ pip install -e ".[dev]"     # also pytest + ruff + hypothesis (for development)
 pip install -e ".[lidc]"    # pylidc, for the LIDC-IDRI / LUNA16 examples
 pip install -e ".[excel]"   # xlrd + openpyxl, for the TCIA diagnosis spreadsheets
 pip install -e ".[xgboost]" # optional XGBoost estimator backend
+pip install -e ".[torch]"   # optional tiny PyTorch MLP estimator backend
 ```
 
 `requirements.txt` lists the core runtime dependencies if you prefer not to
@@ -215,6 +220,8 @@ and the HTML report:
   floor*, *at floor*, or *not resolvable at this n* when the interval straddles
   the line and the data cannot yet say.
 - **External validation** — run or not, and how far performance transported.
+- **Graph semantics** — whether the edge definition and edge timing license a
+  graph-shaped predictive or epidemiological claim.
 - A standing *"do not claim clinical utility unless…"* caveat, generated into
   every report and not removable by theming.
 

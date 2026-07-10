@@ -58,7 +58,7 @@ HIGHER_IS_BETTER = LABEL_METRICS + ("roc_auc", "average_precision")
 LOWER_IS_BETTER = ("brier",)
 # Every metric reported per evaluation iteration, in display order.
 ALL_METRICS = HIGHER_IS_BETTER + LOWER_IS_BETTER
-MODEL_CHOICES = ("random_forest", "logistic_regression", "xgboost")
+MODEL_CHOICES = ("random_forest", "logistic_regression", "xgboost", "mlp")
 
 
 class XGBoostLabelEncodedClassifier(BaseEstimator, ClassifierMixin):
@@ -135,6 +135,123 @@ class XGBoostLabelEncodedClassifier(BaseEstimator, ClassifierMixin):
     @property
     def feature_importances_(self):
         return getattr(self._model, "feature_importances_", None)
+
+
+class TorchMLPClassifier(BaseEstimator, ClassifierMixin):
+    """Tiny PyTorch MLP exposed through the same sklearn-compatible harness.
+
+    This is intentionally small: one hidden layer, full-batch optimization, and
+    explicit class weighting. It is a neural comparator for tabular/network
+    features, not an architecture search framework.
+    """
+
+    def __init__(
+        self,
+        hidden_dim: int = 32,
+        dropout: float = 0.1,
+        lr: float = 0.001,
+        weight_decay: float = 0.0001,
+        max_epochs: int = 150,
+        class_weight: str | None = "balanced",
+        random_state: int = 42,
+    ):
+        self.hidden_dim = hidden_dim
+        self.dropout = dropout
+        self.lr = lr
+        self.weight_decay = weight_decay
+        self.max_epochs = max_epochs
+        self.class_weight = class_weight
+        self.random_state = random_state
+
+    def _as_float_array(self, X) -> np.ndarray:
+        if hasattr(X, "to_numpy"):
+            arr = X.to_numpy(dtype=np.float32)
+        else:
+            arr = np.asarray(X, dtype=np.float32)
+        if arr.ndim == 1:
+            arr = arr.reshape(-1, 1)
+        return np.nan_to_num(arr, copy=False)
+
+    def fit(self, X, y):
+        try:
+            import torch
+        except ImportError as exc:
+            raise ImportError(
+                "The mlp estimator requires the optional PyTorch dependency. "
+                "Install it with `pip install vahtian-epinet[torch]` or `pip install torch`."
+            ) from exc
+
+        X_arr = self._as_float_array(X)
+        self._label_encoder = LabelEncoder()
+        y_enc = self._label_encoder.fit_transform(y)
+        self.classes_ = self._label_encoder.classes_
+        self.n_features_in_ = X_arr.shape[1]
+        n_classes = len(self.classes_)
+        if n_classes < 2:
+            raise ValueError("TorchMLPClassifier needs at least two classes")
+
+        torch.manual_seed(int(self.random_state))
+        try:
+            torch.set_num_threads(1)
+        except RuntimeError:
+            pass
+
+        output_dim = 1 if n_classes == 2 else n_classes
+        self._model = torch.nn.Sequential(
+            torch.nn.Linear(self.n_features_in_, int(self.hidden_dim)),
+            torch.nn.ReLU(),
+            torch.nn.Dropout(float(self.dropout)),
+            torch.nn.Linear(int(self.hidden_dim), output_dim),
+        )
+
+        x_tensor = torch.as_tensor(X_arr, dtype=torch.float32)
+        if n_classes == 2:
+            y_tensor = torch.as_tensor(y_enc.reshape(-1, 1), dtype=torch.float32)
+            pos_weight = None
+            counts = np.bincount(y_enc, minlength=2)
+            if self.class_weight == "balanced" and counts[1] > 0:
+                pos_weight = torch.tensor([counts[0] / counts[1]], dtype=torch.float32)
+            criterion = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+        else:
+            y_tensor = torch.as_tensor(y_enc, dtype=torch.long)
+            weights = None
+            counts = np.bincount(y_enc, minlength=n_classes).astype(float)
+            if self.class_weight == "balanced" and np.all(counts > 0):
+                weights = torch.as_tensor(counts.sum() / (n_classes * counts), dtype=torch.float32)
+            criterion = torch.nn.CrossEntropyLoss(weight=weights)
+
+        optimizer = torch.optim.AdamW(
+            self._model.parameters(), lr=float(self.lr), weight_decay=float(self.weight_decay)
+        )
+        self._model.train()
+        for _ in range(max(1, int(self.max_epochs))):
+            optimizer.zero_grad()
+            logits = self._model(x_tensor)
+            loss = criterion(logits, y_tensor)
+            loss.backward()
+            optimizer.step()
+        return self
+
+    def predict_proba(self, X):
+        import torch
+
+        X_arr = self._as_float_array(X)
+        x_tensor = torch.as_tensor(X_arr, dtype=torch.float32)
+        self._model.eval()
+        with torch.no_grad():
+            logits = self._model(x_tensor)
+            if len(self.classes_) == 2:
+                p1 = torch.sigmoid(logits.reshape(-1)).cpu().numpy()
+                return np.column_stack([1.0 - p1, p1])
+            return torch.softmax(logits, dim=1).cpu().numpy()
+
+    def predict(self, X):
+        proba = self.predict_proba(X)
+        if len(self.classes_) == 2:
+            pred = (proba[:, 1] >= 0.5).astype(int)
+        else:
+            pred = np.argmax(proba, axis=1)
+        return self._label_encoder.inverse_transform(pred)
 
 
 def split_csv_list(value: str | None) -> list[str]:
@@ -432,6 +549,7 @@ def _model_display_name(model_name: str) -> str:
         "random_forest": "RandomForestClassifier",
         "logistic_regression": "LogisticRegression",
         "xgboost": "XGBoostClassifier",
+        "mlp": "TorchMLPClassifier",
     }.get(model_name, model_name)
 
 
@@ -467,6 +585,25 @@ def _build_estimator(model_name: str, *, random_state: int) -> tuple[BaseEstimat
             {
                 "model__C": [0.1, 1.0, 10.0],
                 "model__class_weight": [None, "balanced"],
+            },
+        )
+    if model_name == "mlp":
+        if importlib.util.find_spec("torch") is None:
+            raise ImportError(
+                "The mlp estimator requires the optional PyTorch dependency. "
+                "Install it with `pip install vahtian-epinet[torch]` or `pip install torch`."
+            )
+        return (
+            Pipeline(
+                [
+                    ("scaler", StandardScaler()),
+                    ("model", TorchMLPClassifier(random_state=random_state, max_epochs=120)),
+                ]
+            ),
+            {
+                "model__hidden_dim": [16, 32],
+                "model__weight_decay": [0.0001],
+                "model__dropout": [0.1],
             },
         )
     if importlib.util.find_spec("xgboost") is None:
@@ -776,10 +913,11 @@ def train_outcome_model(
     Hyperparameters are tuned once on the primary split and held fixed across
     iterations so the loop measures split variance, not tuning variance.
     ``model_name`` selects the estimator: ``random_forest`` (default nonlinear
-    tabular model), ``logistic_regression`` (scaled regularized comparator), or
-    ``xgboost`` (optional dependency). The tuning grids are intentionally small
-    and scored by ``balanced_accuracy`` so skewed outcomes do not collapse the
-    model toward the majority class.
+    tabular model), ``logistic_regression`` (scaled regularized comparator),
+    ``xgboost`` (optional dependency), or ``mlp`` (optional tiny PyTorch neural
+    comparator). The tuning grids are intentionally small and scored by
+    ``balanced_accuracy`` so skewed outcomes do not collapse the model toward
+    the majority class.
 
     Nodes whose outcome is blank/NaN are treated as unlabeled scaffold: they
     contribute to the graph features but are excluded from training and
@@ -1711,8 +1849,8 @@ def build_parser() -> argparse.ArgumentParser:
         default="random_forest",
         help=(
             "Outcome-model estimator: random_forest (default), "
-            "logistic_regression (scaled regularized comparator), or xgboost "
-            "(requires optional dependency)"
+            "logistic_regression (scaled regularized comparator), xgboost "
+            "(requires optional dependency), or mlp (requires optional PyTorch)"
         ),
     )
     parser.add_argument("--run-paths", action=argparse.BooleanOptionalAction, default=True)

@@ -14,7 +14,7 @@ authors:
 affiliations:
   - name: Vahtian
     index: 1
-date: 9 July 2026
+date: 10 July 2026
 bibliography: paper.bib
 ---
 
@@ -39,10 +39,13 @@ enables the permutation null in its reproducible default plan.
 EpiNet is intended to improve the reproducibility of evaluation workflows rather
 than to introduce a new predictive algorithm. The default predictor is a
 standard random forest [@scikit-learn], with scaled regularized logistic
-regression and optional XGBoost [@xgboost] available as alternatives; the
-contribution is the conservative, auditable workflow wrapped around the
-estimator, so that the same checks travel with every analysis. EpiNet is a
-research and education demonstrator, not clinical decision support.
+regression, optional XGBoost [@xgboost], and a deliberately small optional
+PyTorch multilayer perceptron available as alternatives; the contribution is the
+conservative, auditable workflow wrapped around the estimator, so that the same
+checks travel with every analysis. The claims check also records graph semantics
+and edge timing, distinguishing feature-derived similarity graphs from observed
+relations before network-shaped claims are made. EpiNet is a research and
+education demonstrator, not clinical decision support.
 
 # Statement of need
 
@@ -96,10 +99,19 @@ it. Safety gates block ill-posed runs (no or single-class outcome, an identifier
 used as a feature) and downgrade under-powered cohorts to a descriptive report
 rather than fabricating metrics.
 
+EpiNet treats graph construction as a measurement step, not a cosmetic input
+format. Workbench plans record whether edges are feature-derived similarities,
+observed relations, or unspecified, and whether observed edges were knowable
+before the outcome. The generated claims check therefore prevents a similarity
+graph from being reported as evidence of contact, referral, exposure, or
+message-passing effects. This gate makes explicit the boundary between ordinary
+tabular modelling on graph-derived descriptors and a defensible network
+epidemiology claim.
+
 Two design decisions follow from the optional federated mode. The supervised
 outcome estimator sits deliberately *outside* the federated spine, since fitted
-predictive models such as tree ensembles and regularized regressions do not
-combine exactly from additive site summaries. The
+predictive models such as tree ensembles, neural networks, and regularized
+regressions do not combine exactly from additive site summaries. The
 nearest-centroid contestability layer, by contrast, has additive sufficient
 statistics: the global scaler, class centroids, and empirical shared covariance
 reconstruct from per-site counts, sums, centered sums of squares, and centered

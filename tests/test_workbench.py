@@ -58,10 +58,12 @@ class ConfigTests(unittest.TestCase):
         config.data.nodes_path = None
         config.analysis.split.test_size = 1.5
         config.analysis.graph.mode = "bogus"
+        config.analysis.graph.semantics = "bogus"
         errors = ecfg.validate_config(config)
         self.assertTrue(any("nodes_path" in e for e in errors))
         self.assertTrue(any("test_size" in e for e in errors))
         self.assertTrue(any("graph.mode" in e for e in errors))
+        self.assertTrue(any("graph.semantics" in e for e in errors))
 
 
 class SchemaInferenceTests(unittest.TestCase):

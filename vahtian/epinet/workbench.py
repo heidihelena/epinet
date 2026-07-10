@@ -67,6 +67,7 @@ def build_plan(
     nodes_path: str,
     edges_path: str | None = None,
     validation_path: str | None = None,
+    validation_edges_path: str | None = None,
     outcome: str | None = None,
     output_dir: str | None = None,
     name: str | None = None,
@@ -100,16 +101,20 @@ def build_plan(
     config.data.nodes_path = nodes_path
     config.data.edges_path = edges_path
     config.data.validation_path = validation_path
+    config.data.validation_edges_path = validation_edges_path
     config.schema = schema
 
     # Mode-appropriate defaults that stay honest.
     if mode == "nodes_edges":
         config.analysis.graph.mode = "none"  # real edges already define the graph
+        config.analysis.graph.semantics = "observed_relation"
         config.analysis.split.method = "community_aware"
     elif mode == "single_csv":
         config.analysis.graph.mode = "none"  # feature-space only unless user opts into similarity
         config.analysis.split.method = "stratified"
     if mode == "dev_validation":
+        if edges_path or validation_edges_path:
+            config.analysis.graph.semantics = "observed_relation"
         config.analysis.evaluation.external_validation = True
         config.analysis.split.method = "community_aware"
 
@@ -504,6 +509,13 @@ def run_config(config: AnalysisConfig, *, skip_gates: bool = False) -> dict:
         baseline_metrics=baseline_metrics,
         baseline_paired=baseline_paired,
         external_validation=external_validation,
+        graph_semantics={
+            "data_mode": config.data.mode,
+            "graph_mode": config.analysis.graph.mode,
+            "semantics": config.analysis.graph.semantics,
+            "edge_timing": config.analysis.graph.edge_timing,
+            "has_edge_table": bool(config.data.edges_path),
+        },
         model_trained=run_model and model_metrics is not None,
     )
     (output_dir / "claims_check.json").write_text(json.dumps(claims, indent=2) + "\n")
@@ -570,6 +582,7 @@ def _cmd_plan(args) -> None:
         nodes_path=args.nodes,
         edges_path=args.edges,
         validation_path=args.validation,
+        validation_edges_path=args.validation_edges,
         outcome=args.outcome,
         output_dir=args.output_dir,
         name=args.name,
@@ -626,6 +639,7 @@ def build_parser():
     p.add_argument("--nodes", required=True, help="node/single CSV path")
     p.add_argument("--edges", default=None, help="optional edge CSV (graph mode)")
     p.add_argument("--validation", default=None, help="optional external cohort CSV")
+    p.add_argument("--validation-edges", default=None, help="optional external cohort edge CSV")
     p.add_argument("--outcome", default=None, help="outcome column (overrides inference)")
     p.add_argument("--output", default="analysis.yaml", help="config output path")
     p.add_argument("--output-dir", default=None, help="run output directory")

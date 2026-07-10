@@ -81,7 +81,8 @@ def fit(
     """Fit EpiNet's honest outcome model on a flat table.
 
     ``model`` selects the same estimator backends as the CLI:
-    ``random_forest``, ``logistic_regression``, or optional ``xgboost``.
+    ``random_forest``, ``logistic_regression``, optional ``xgboost``, or
+    optional ``mlp``.
     Returns a dict with ``outcome``, ``predictors``, ``features_used``, ``n``,
     the full ``metrics`` summary (discrimination, classification, calibration,
     bootstrap CI, permutation null, data warnings), and ``importance``.
