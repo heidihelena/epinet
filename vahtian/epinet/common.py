@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2024-2026 Heidi Andersén
+
 """Small shared helpers used across the EpiNet modules.
 
 Kept dependency-light (pandas + stdlib only) so any module can import it without

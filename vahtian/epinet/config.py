@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2024-2026 Heidi Andersén
+
 """EpiNet Workbench configuration schema — the single source of truth for a run.
 
 The Workbench (CLI ``epinet-workbench`` and the Streamlit UI) is a *thin wrapper*

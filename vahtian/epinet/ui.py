@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2024-2026 Heidi Andersén
+
 """EpiNet Workbench — Streamlit UI.
 
 A *thin* local interface over the same engine as the CLI. It never becomes the

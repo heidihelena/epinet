@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2024-2026 Heidi Andersén
+
 """Schema inference and data validation for the EpiNet Workbench (Screens 1-2).
 
 Two jobs:

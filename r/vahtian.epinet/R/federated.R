@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2024-2026 Heidi Andersén
+
 # Federated surface: partition rows across sites, reconstruct the fit from
 # per-site aggregates only, and show it matches the centralized run.
 

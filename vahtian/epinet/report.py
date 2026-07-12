@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2024-2026 Heidi Andersén
+
 """Model card generation for the EpiNet outcome model.
 
 A model card is the reporting counterpart to the metrics JSON: a human-readable

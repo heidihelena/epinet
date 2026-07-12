@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2024-2026 Heidi Andersén
+
 """Representation baselines for the EpiNet outcome model.
 
 A reviewer of any graph-ML method asks the obvious question: do the hand-crafted

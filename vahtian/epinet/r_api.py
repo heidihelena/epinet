@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2024-2026 Heidi Andersén
+
 """Tabular adapter for language bindings (notably the ``vahtian.epinet`` R package).
 
 EpiNet's core is graph-shaped, but many callers — especially from R — have an

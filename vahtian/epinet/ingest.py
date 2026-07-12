@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2024-2026 Heidi Andersén
+
 """Front-end input normalization: map a messy real-world CSV onto EpiNet's
 canonical node/edge schema *before* strict validation runs.
 

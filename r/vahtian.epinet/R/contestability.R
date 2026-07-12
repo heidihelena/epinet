@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2024-2026 Heidi Andersén
+
 # Contestability surface: how far each row is from flipping class, and which
 # features drive the flip. Computation runs in the Python core; the plot is
 # native R (base graphics).

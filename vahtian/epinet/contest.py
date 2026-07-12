@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2024-2026 Heidi Andersén
+
 """Contestability and flip-distance for the nearest-centroid classifier.
 
 This is the *analytic* complement to ``epinet_cluster``'s centroid view. Where
