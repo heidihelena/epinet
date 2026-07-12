@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2024-2026 Heidi Andersén
+
 """General network analysis toolkit for node/edge CSV data.
 
 This script keeps two analytic lenses side by side:

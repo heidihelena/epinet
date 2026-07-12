@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2024-2026 Heidi Andersén
+
 """Registry schema adapter: map a flat clinical / registry export onto EpiNet's
 canonical node/edge schema, driven by a declarative profile.
 

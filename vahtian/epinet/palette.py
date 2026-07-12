@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2024-2026 Heidi Andersén
+
 """Figure and report palettes — Wong (default) and Vahtian "Sentinel".
 
 The report layer lets a user slide between two named palettes without touching

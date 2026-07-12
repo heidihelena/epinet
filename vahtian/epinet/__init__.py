@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2024-2026 Heidi Andersén
+
 """EpiNet (Epistemic Network): transparent network/feature-space analysis.
 
 Modules are imported as ``from vahtian.epinet import toolkit`` etc. The flat

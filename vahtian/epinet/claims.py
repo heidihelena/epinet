@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2024-2026 Heidi Andersén
+
 """Scientific claims check — turn evaluation outputs into plain-language gates.
 
 The methods produce numbers; this layer states, in words a non-statistician can

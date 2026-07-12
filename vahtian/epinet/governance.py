@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2024-2026 Heidi Andersén
+
 """Governance and consent gate for federated egress.
 
 Nothing in EpiNet's federated path (epinet_federated) ships data on its own —

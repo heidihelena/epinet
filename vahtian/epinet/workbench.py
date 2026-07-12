@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2024-2026 Heidi Andersén
+
 """EpiNet Workbench — config-driven planner, runner, and CLI.
 
 The Workbench turns CSVs into a transparent analysis *plan* (``analysis.yaml``)

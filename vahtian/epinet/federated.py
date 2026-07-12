@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2024-2026 Heidi Andersén
+
 """Federated fit: reconstruct EpiNet's scaler and class centroids from per-site
 aggregates, without pooling any record.
 

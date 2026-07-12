@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2024-2026 Heidi Andersén
+
 # Graph surface: build the network, derive graph features, fit the honest
 # outcome model, and draw the network natively in R (igraph if available).
 

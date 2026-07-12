@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2024-2026 Heidi Andersén
+
 """Visualization counterpart to epinet_toolkit.
 
 The toolkit produces tabular outputs (features, paths, model metrics); this module

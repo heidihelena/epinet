@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2024-2026 Heidi Andersén
+
 # vahtian.epinet — a thin reticulate wrapper over the tested Python `vahtian.epinet` package.
 # The R layer does no modelling of its own: it marshals a data frame to the
 # `vahtian.epinet.r_api.fit` adapter and wraps the returned summary in an S3 object.

@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2024-2026 Heidi Andersén
+
 """Feature-space clustering and centroid distances for network nodes.
 
 This is the attribute-space counterpart to the toolkit's graph shortest paths.

@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2024-2026 Heidi Andersén
+
 """LLMvahti (experimental): blinded-second-rater audit of LLM-judge verdicts.
 
 EpiNet's organising question — not just what a model predicts but how

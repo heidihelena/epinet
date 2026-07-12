@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2024-2026 Heidi Andersén
+
 """External validation for the EpiNet outcome model.
 
 Internal evaluation (repeated splits, permutation null, calibration) guards
