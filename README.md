@@ -330,5 +330,5 @@ If you use EpiNet, please cite it via [`CITATION.cff`](CITATION.cff) (GitHub's
 ## License
 
 Apache License 2.0. See `LICENSE` and `NOTICE`. (Releases up to and including
-`0.4.1` were published under the MIT License and remain available under those
-terms.)
+`0.4.2` were published under the MIT License and remain available under those
+terms; Apache-2.0 applies from `0.4.3` onward.)

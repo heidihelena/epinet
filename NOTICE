@@ -4,5 +4,6 @@ Copyright 2024-2026 Heidi Andersén
 Developed as part of Vahtian.
 
 This product is licensed under the Apache License, Version 2.0 (see LICENSE).
-Releases published before this relicensing (e.g. vahtian-epinet 0.4.1 on PyPI)
-were distributed under the MIT License and remain available under those terms.
+Releases published before this relicensing (vahtian-epinet 0.4.1 and 0.4.2 on
+PyPI) were distributed under the MIT License and remain available under those
+terms. Apache-2.0 applies from 0.4.3 onward.
