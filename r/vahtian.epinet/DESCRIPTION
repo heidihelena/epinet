@@ -12,7 +12,7 @@ Description: An R interface to EpiNet, a transparent toolkit for honestly
     and returns calibrated, caveated results: discrimination, calibration,
     bootstrap intervals, a label-permutation null, and feature importance. A
     research and education demonstrator, not clinical decision support.
-License: MIT + file LICENSE
+License: Apache License (>= 2)
 URL: https://github.com/heidihelena/epinet
 BugReports: https://github.com/heidihelena/epinet/issues
 Encoding: UTF-8

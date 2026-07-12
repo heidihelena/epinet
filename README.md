@@ -1,7 +1,7 @@
 # EpiNet — the Epistemic Network toolkit
 
 [![Tests](https://github.com/heidihelena/epinet/actions/workflows/tests.yml/badge.svg)](https://github.com/heidihelena/epinet/actions/workflows/tests.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 ![Python](https://img.shields.io/badge/python-3.10%E2%80%933.12-blue)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20681072.svg)](https://doi.org/10.5281/zenodo.20681072)
 
@@ -32,7 +32,7 @@ evaluation is the default path**: calibration and uncertainty are reported with
 the headline metric, while label-permutation nulls and community-aware splitting
 are built into the same workflow when requested (and enabled by the Workbench's
 default plan), so a good score can be checked against leakage or chance.
-Developed as part of **Vahtian**; MIT licensed.
+Developed as part of **Vahtian**; Apache-2.0 licensed.
 
 **Jump to:** [About](#about-this-project) · [What it does](#what-it-does) ·
 [Install](#install) · [Quick start](#quick-start) ·
@@ -329,4 +329,6 @@ If you use EpiNet, please cite it via [`CITATION.cff`](CITATION.cff) (GitHub's
 
 ## License
 
-MIT. See `LICENSE`.
+Apache License 2.0. See `LICENSE` and `NOTICE`. (Releases up to and including
+`0.4.1` were published under the MIT License and remain available under those
+terms.)
