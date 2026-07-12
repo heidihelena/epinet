@@ -40,7 +40,7 @@ EpiNet is intended to improve the reproducibility of evaluation workflows rather
 than to introduce a new predictive algorithm. The default predictor is a
 standard random forest [@scikit-learn], with scaled regularized logistic
 regression, optional XGBoost [@xgboost], and a deliberately small optional
-PyTorch multilayer perceptron available as alternatives; the contribution is the
+PyTorch [@paszke2019] multilayer perceptron available as alternatives; the contribution is the
 conservative, auditable workflow wrapped around the estimator, so that the same
 checks travel with every analysis. The claims check also records graph semantics
 and edge timing, distinguishing feature-derived similarity graphs from observed
@@ -117,9 +117,9 @@ statistics: the global scaler, class centroids, and empirical shared covariance
 reconstruct from per-site counts, sums, centered sums of squares, and centered
 co-moment matrices. The unshrunk empirical analytic is therefore exactly
 federatable while record-level data stay local. When the Mahalanobis precision
-needs regularisation, EpiNet also supports opt-in fixed shrinkage or
-aggregate-computable Oracle Approximating Shrinkage [@chen2010] toward the
-identity, using the pooled covariance rather than record-level data.
+needs regularisation, EpiNet also supports opt-in fixed shrinkage toward the
+identity [@ledoit2004] or its aggregate-computable Oracle Approximating variant
+[@chen2010], using the pooled covariance rather than record-level data.
 
 The contestability layer is offered as a software diagnostic for triage and
 review — the flip-distance and value-of-information ranking are exact properties
