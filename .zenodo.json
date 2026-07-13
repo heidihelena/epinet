@@ -1,0 +1,34 @@
+{
+  "title": "EpiNet — the Epistemic Network toolkit: a reproducible, leakage-aware evaluation workflow for graph-shaped tabular data",
+  "description": "EpiNet is a research/education toolkit for graph-shaped datasets. It computes graph features, evaluates an outcome model with discrimination and calibration metrics, a label-permutation null, and community-aware splitting, scores how contestable each nearest-centroid call is (closed-form flip-distance), and reconstructs its standardization and contestability spine from per-site aggregates behind a fail-closed governance gate. It is a demonstrator, not clinical decision support.",
+  "upload_type": "software",
+  "access_right": "open",
+  "license": "Apache-2.0",
+  "creators": [
+    {
+      "name": "Andersén, Heidi Helena",
+      "orcid": "0000-0001-5923-5865"
+    }
+  ],
+  "keywords": [
+    "network analysis",
+    "feature-space clustering",
+    "clinical prediction model",
+    "calibration",
+    "model contestability",
+    "federated analysis",
+    "statistical disclosure control"
+  ],
+  "related_identifiers": [
+    {
+      "identifier": "https://github.com/heidihelena/epinet",
+      "relation": "isSupplementTo",
+      "scheme": "url"
+    },
+    {
+      "identifier": "10.5281/zenodo.20681072",
+      "relation": "isNewVersionOf",
+      "scheme": "doi"
+    }
+  ]
+}
