@@ -13,6 +13,7 @@ type: software
 authors:
   - family-names: "Andersén"
     given-names: "Heidi"
+    orcid: "https://orcid.org/0000-0001-5923-5865"
 repository-code: "https://github.com/heidihelena/epinet"
 url: "https://github.com/heidihelena/epinet"
 license: Apache-2.0
