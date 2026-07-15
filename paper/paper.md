@@ -62,7 +62,11 @@ value-of-information ranking of which measurement would settle it. The need it
 addresses is methodological reproducibility, not predictive performance: it
 standardizes *how an evaluation is conducted and reported* so the same
 conservative checks are available through one auditable workflow, rather than
-re-implemented ad hoc per study.
+re-implemented ad hoc per study. It ships runnable demonstrations on synthetic
+and small biomedical-style cohorts, representation baselines, and an
+external-validation harness, and is distributed on PyPI (`vahtian-epinet`) with
+an R interface (`vahtian.epinet`) that wraps the same tested core through
+reticulate, so results cannot diverge across languages.
 
 # State of the field
 
@@ -109,17 +113,14 @@ tabular modelling on graph-derived descriptors and a defensible network
 epidemiology claim.
 
 Two design decisions follow from the optional federated mode. The supervised
-outcome estimator sits deliberately *outside* the federated spine, since fitted
-predictive models such as tree ensembles, neural networks, and regularized
-regressions do not combine exactly from additive site summaries. The
-nearest-centroid contestability layer, by contrast, has additive sufficient
-statistics: the global scaler, class centroids, and empirical shared covariance
-reconstruct from per-site counts, sums, centered sums of squares, and centered
-co-moment matrices. The unshrunk empirical analytic is therefore exactly
-federatable while record-level data stay local. When the Mahalanobis precision
-needs regularisation, EpiNet also supports opt-in fixed shrinkage toward the
-identity [@ledoit2004] or its aggregate-computable Oracle Approximating variant
-[@chen2010], using the pooled covariance rather than record-level data.
+estimator sits deliberately *outside* the federated spine, since fitted models
+(tree ensembles, neural networks, regularized regressions) do not combine exactly
+from additive site summaries. The nearest-centroid contestability layer, by
+contrast, has additive sufficient statistics — the scaler, class centroids, and
+shared covariance reconstruct from per-site counts, sums, and (co-)moment
+matrices — so the unshrunk empirical analytic is exactly federatable while
+record-level data stay local; optional Mahalanobis shrinkage [@ledoit2004;
+@chen2010] uses the pooled covariance rather than records.
 
 The contestability layer is offered as a software diagnostic for triage and
 review — the flip-distance and value-of-information ranking are exact properties
@@ -150,44 +151,26 @@ epinet \
 ```
 
 The run writes a self-contained bundle to `results/`: a model card
-(discrimination, calibration), the permutation-null comparison and bootstrap
-intervals, diagnostic figures, a machine-readable claims check, and a provenance
-record of inputs, configuration, and seeds. The same analysis is available as a
-Python API, through the workbench, and from R via the `vahtian.epinet` interface —
-all driving the identical engine, so a result is reproducible however it was
-launched.
+(discrimination, calibration), the permutation-null comparison
+(\autoref{fig:permnull}) and bootstrap intervals, diagnostic figures, a
+machine-readable claims check, and a provenance record of inputs, configuration,
+and seeds. The same analysis is available as a Python API, through the workbench,
+and from R via the `vahtian.epinet` interface — all driving the identical engine,
+so a result is reproducible however it was launched.
 
 ![Label-permutation null from the example run: the histogram is weighted F1 under
 100 random label permutations (the no-signal reference) and the line is the
 observed score. The separation (here $p = 0.01$) is what distinguishes real
 signal from chance in the example workflow.\label{fig:permnull}](permutation_null.png){ width=70% }
 
-# Research impact statement
-
-EpiNet's current impact is as a reproducible research and education demonstrator.
-The repository ships runnable demonstrations on synthetic and small
-biomedical-style cohorts (nodule risk, lymphoma subtyping, a registry adapter,
-federated contestability, governance-mediated egress), representation baselines
-including a learned node-embedding comparison, and an external-validation harness.
-The v0.4.2 release — installable from PyPI as `vahtian-epinet`, with an R
-interface wrapping the same tested core through reticulate — freezes these as a
-citation snapshot with CI-tested examples (Python 3.10–3.12). Its near-term value
-is an executable reference workflow for catching leakage, chance-level
-performance, calibration failure, and overconfident boundary calls before claims
-are drawn from small cohorts.
-
-# AI usage disclosure
-
-Generative AI assistance was used for code drafting and refactoring,
-documentation, and manuscript preparation. All AI-assisted changes were reviewed
-by the author, exercised through the automated test suite, checked against
-documented statistical identities where applicable (for example, the closed-form
-flip-distance and the additive reconstruction of the scaler and centroids), and
-revised before release.
-
 # Acknowledgements
 
 EpiNet is developed as part of Vahtian, alongside the companion project
-*citevahti* (reproducible citation and provenance tooling).
+*citevahti* (reproducible citation and provenance tooling). Generative AI
+assistance was used for code drafting, documentation, and manuscript preparation;
+all AI-assisted changes were reviewed by the author, exercised through the
+automated test suite, and checked against documented statistical identities (for
+example, the closed-form flip-distance and the additive reconstruction of the
+scaler and centroids) before release.
 
 # References
