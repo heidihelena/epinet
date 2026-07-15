@@ -6,14 +6,10 @@
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21339302.svg)](https://doi.org/10.5281/zenodo.21339302)
 
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)"
-            srcset="assets/hero-workflow-dark.svg">
-    <img
+  <img
       src="assets/hero-workflow.svg"
       alt="EpiNet evaluation architecture: data becomes a graph and feature space; splitting with baselines and a permutation null feeds two parallel paths — calibration and performance, and contestability — which join in a model card with provenance"
       width="1200">
-  </picture>
 </p>
 
 EpiNet is Vahtian’s research-methods demonstrator for graph-shaped biomedical data.
