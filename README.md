@@ -5,6 +5,13 @@
 ![Python](https://img.shields.io/badge/python-3.10%E2%80%933.12-blue)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21339302.svg)](https://doi.org/10.5281/zenodo.21339302)
 
+<p align="center">
+  <img
+      src="assets/hero-workflow.svg"
+      alt="EpiNet evaluation architecture: data becomes a graph and feature space; splitting with baselines and a permutation null feeds two parallel paths — calibration and performance, and contestability — which join in a model card with provenance"
+      width="1200">
+</p>
+
 EpiNet is Vahtian’s research-methods demonstrator for graph-shaped biomedical data.
 It produces calibrated, caveated, provenance-rich analysis reports. It is not clinical decision support.
 CiteVahti checks claim-evidence support in manuscripts.
